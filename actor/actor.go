@@ -1,24 +1,28 @@
 package actor
-import "fmt"
+import (
+	"fmt"
+	"muddle/tree"
+)
 
 /**
 A new actor must implement this to be created
  */
-type ActorInterface interface {
+type Actor interface {
 	OnRecieve(self *ActorRef, msg ActorMessage)
 }
+
 
 /**
 Actual actors kept within the system
  */
 type DefaultActor struct {
-	Name string
-	Children []*DefaultActor
-	Parent *DefaultActor
-	actorInterface ActorInterface
-	Channel chan ActorMessage
-	StopChannel chan uint8
-	index int
+	Name           string
+	Children       []*DefaultActor
+	Parent         *DefaultActor
+	actorInterface Actor
+	Channel        chan ActorMessage
+	StopChannel    chan uint8
+	index          int
 }
 
 /**
@@ -35,9 +39,7 @@ func (defaultActor *DefaultActor) runner() {
 		}
 
 		if !stop {
-//			fmt.Println("waiting message")
 			actorMessage := <- defaultActor.Channel
-//			fmt.Println("got message")
 			defaultActor.actorInterface.OnRecieve(convertDefaultActorToActorRef(defaultActor), actorMessage)
 		} else {
 			break
@@ -76,7 +78,20 @@ func (defaultActor *DefaultActor) Tell(msg interface{}, tellerRef *ActorRef) {
 	defaultActor.Channel <- actorMessage
 }
 
-
+/**
+Stops the actor, but does not delete it
+//todo When do we delete it ?
+ */
 func (defaultActor *DefaultActor) Stop() {
 	defaultActor.StopChannel <- 1
+}
+
+func (defaultActor DefaultActor) Bigger(daInterface tree.Comparable) bool {
+	toBeCompared := daInterface.(DefaultActor)
+	return defaultActor.Name > toBeCompared.Name
+}
+
+func (defaultActor DefaultActor) Equals(daInterface tree.Comparable) bool {
+	toBeCompared := daInterface.(DefaultActor)
+	return defaultActor.Name == toBeCompared.Name
 }

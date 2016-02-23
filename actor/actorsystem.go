@@ -5,7 +5,7 @@ import (
 )
 
 type ActorSystem struct {
-	actorMap map[string]ActorInterface
+	actorMap map[string]Actor
 	channelMap map[string]chan ActorMessage
 	rootActor *DefaultActor
 
@@ -15,7 +15,7 @@ func (actorSystem *ActorSystem) InitSystem() {
 	actorSystem.rootActor = new(DefaultActor)
 	actorSystem.rootActor.Name = "root"
 	actorSystem.channelMap = make(map[string]chan ActorMessage)
-	actorSystem.actorMap = make(map[string]ActorInterface)
+	actorSystem.actorMap = make(map[string]Actor)
 	//todo wht to do with actor interface in master ?
 }
 
@@ -75,7 +75,7 @@ func (actorSystem *ActorSystem) getParent(name string) (string, *DefaultActor, e
 
 
 
-func (actorSystem *ActorSystem) CreateActor(actor ActorInterface, name string) *ActorRef {
+func (actorSystem *ActorSystem) CreateActor(actor Actor, name string) *ActorRef {
 	singularName, parentActor, err := actorSystem.getParent(name)
 	if err != nil {
 		fmt.Println(err)
