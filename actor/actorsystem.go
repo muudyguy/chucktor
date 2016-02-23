@@ -102,6 +102,7 @@ func (actorSystem *ActorSystem) CreateActor(actor Actor, name string) *ActorRef 
 
 	return &ActorRef{
 		actorIndex: newActor.index,
+		defaultActor:newActor,
 	}
 }
 

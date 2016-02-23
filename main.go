@@ -34,11 +34,11 @@ func (msg Msg) Equals(in tree.Comparable) bool {
 }
 
 func main() {
-//	as := actor.ActorSystem{}
-//	as.InitSystem()
-//	myActor := MyActor{}
-//	actor := as.CreateActor(myActor, "actorname")
-//	actor.Tell(Msg{}, nil)
+	as := actor.ActorSystem{}
+	as.InitSystem()
+	myActor := MyActor{}
+	actor := as.CreateActor(myActor, "actorname")
+	actor.Tell(Msg{}, nil)
 
 
 	var btree tree.BinaryTree = tree.NewBinaryTree()
