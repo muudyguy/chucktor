@@ -7,5 +7,5 @@ I am mostly evolving this little framework with the principles of akka, but addi
 Once I feel like it has arrived a certain maturity, this read me will certainly change to a short documentation, followed by
 a wiki page :)
 
-Why do we need actors when we have channels? Well, because we can ! No, okay mostly, for the sake of code clarity, and business
+Why do we use actors when we have channels? Well, because we can ! No, okay mostly, for the sake of code clarity, and business
 flow simplicity. I hope I am right :)
