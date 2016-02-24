@@ -14,10 +14,14 @@ type Actor interface {
 
 /**
 Actual actors kept within the system
+Childrens are kept in a slice, also a map
+This brings memory overhead, but must be a bit faster if it was to be kept
+in a map only
  */
 type DefaultActor struct {
 	Name           string
-	Children       []*DefaultActor
+	ChildrenArray  []*DefaultActor
+	ChildrenMap    map[string]*DefaultActor
 	Parent         *DefaultActor
 	actorInterface Actor
 	Channel        chan ActorMessage
@@ -33,13 +37,13 @@ func (defaultActor *DefaultActor) runner() {
 	var stop bool = false
 	for {
 		select {
-		case <- defaultActor.StopChannel:
+		case <-defaultActor.StopChannel:
 			stop = true
 		default:
 		}
 
 		if !stop {
-			actorMessage := <- defaultActor.Channel
+			actorMessage := <-defaultActor.Channel
 			defaultActor.actorInterface.OnRecieve(convertDefaultActorToActorRef(defaultActor), actorMessage)
 		} else {
 			break
