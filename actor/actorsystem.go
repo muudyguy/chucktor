@@ -2,26 +2,38 @@ package actor
 import (
 	"strings"
 	"fmt"
+	"sync"
 )
 
 type ActorSystem struct {
-	actorMap map[string]Actor
+	actorMap   map[string]Actor
 	channelMap map[string]chan ActorMessage
-	rootActor *DefaultActor
+	rootActor  *DefaultActor
+	waitGroup  *sync.WaitGroup
 
 }
 
+/**
+Initialize the pointers within actor system struct
+ */
 func (actorSystem *ActorSystem) InitSystem() {
 	actorSystem.rootActor = new(DefaultActor)
 	actorSystem.rootActor.Name = "root"
 	actorSystem.rootActor.ChildrenMap = make(map[string]*DefaultActor)
 	actorSystem.channelMap = make(map[string]chan ActorMessage)
 	actorSystem.actorMap = make(map[string]Actor)
+	actorSystem.waitGroup = new(sync.WaitGroup)
 	//todo wht to do with actor interface in master ?
 }
 
+func (actorSystem *ActorSystem) Run() {
+	actorSystem.waitGroup.Wait()
+}
 
-func nameParser(name string) []string {
+/**
+Parse a path and return path elements as a slice
+ */
+func pathParser(name string) []string {
 	path := strings.Split(name, "/") //path is a slice of names
 	//An absolute name was given
 	if string(name[0]) == string("/") {
@@ -31,58 +43,62 @@ func nameParser(name string) []string {
 	return path
 }
 
+
 /**
-Recursively searches until dst in filled with parent to be
-But Even if one branch finds the actor, it keeps searching.
-
-//todo In the future time complexity should be reduced by keeping a tree for names/actorPointers
+Get the actor corresponding to the path, starting from the given DefaultActor pointer
+Runs recursively
+//todo Implement a nonrecursive version for the future
  */
-func recursivelyCheckForAvailabilityAndFillIfAvailable(actor *DefaultActor, currentIndexForNames int, pathSlice []string, dstParent **DefaultActor) {
-	if actor.Name == pathSlice[currentIndexForNames] {
-		if (currentIndexForNames == len(pathSlice) - 2) {
-			*dstParent = actor
-			return
+func getActorFromNodeRecursively(defaultActor *DefaultActor, currentIndexOfPathElement int, pathSlice []string) (*DefaultActor, error) {
+	nodeForPathElement, isFound := defaultActor.ChildrenMap[pathSlice[currentIndexOfPathElement]]
+	if isFound {
+		//This is the last part of the uri path
+		if currentIndexOfPathElement == len(pathSlice) - 1 {
+			return nodeForPathElement, nil
 		}
-		for i := 0; i < len(actor.ChildrenArray); i++ {
-			recursivelyCheckForAvailabilityAndFillIfAvailable(actor.ChildrenArray[i], currentIndexForNames + 1, pathSlice, dstParent);
-		}
-	} else {
 
+		return getActorFromNodeRecursively(nodeForPathElement, currentIndexOfPathElement + 1, pathSlice)
+	} else {
+		return nil, ActorNotFound{} //todo Write custom error
 	}
 }
 
-func (actorSystem *ActorSystem) getParent(name string) (string, *DefaultActor, error) {
-	namesSlice := nameParser(name)
-	rootActor := actorSystem.rootActor
-
-	var dstParent **DefaultActor = new(*DefaultActor)
-	if rootActor.Name == namesSlice[0] {
-		return "", nil, fmt.Errorf("Cannot use the name of the internal root actor")
-	} else {
-
-		//If name is singular, parent is root
-		if len(namesSlice) == 1 {
-			*dstParent = rootActor
-		} else {
-			for i := 0; i < len(rootActor.ChildrenArray); i++ {
-				recursivelyCheckForAvailabilityAndFillIfAvailable(rootActor.ChildrenArray[i], 0, namesSlice, dstParent)
-			}
-
-			if dstParent == nil {
-				return "", nil, fmt.Errorf("Cannot find a viable parent")
-			}
-		}
-
-		return namesSlice[len(namesSlice) - 1], *dstParent, nil
-	}
-
+/**
+Remove the name of the actor to be created from the path to target for finding parent of the future actor
+e.g. /actor/parentActor/futureActor => /actor/parentActor
+ */
+func getPathUntilParentAndNameOfFutureActor(path string) ([]string, string) {
+	pathSlice := pathParser(path)
+	return pathSlice[0:len(pathSlice) - 1], pathSlice[len(pathSlice) - 1]
 }
 
 
+/**
+Get parent actor of the actor corresponding to the path
+This method is used with an actor path which is not yet created
+Once the parent of the actor to be created is found, the new actor
+is created as a child under that actor
+ */
+func getParentRecursively(defaultActor *DefaultActor, path string) (*DefaultActor, string, error) {
+	pathSliceUntilFutureParentName, nameOfFutureActor := getPathUntilParentAndNameOfFutureActor(path)
 
+	if len(pathSliceUntilFutureParentName) == 0 {
+		return defaultActor, nameOfFutureActor, nil
+	}
 
-func (actorSystem *ActorSystem) CreateActor(actor Actor, name string) (ActorRef, error) {
-	singularName, parentActor, err := actorSystem.getParent(name)
+	actor, err := getActorFromNodeRecursively(defaultActor, 0, pathSliceUntilFutureParentName)
+	if err != nil {
+		return nil, "", err
+	}
+	return actor, nameOfFutureActor, nil
+}
+
+/**
+Create actor
+ */
+func (actorSystem *ActorSystem) CreateActor(actor Actor, path string) (ActorRef, error) {
+	fmt.Println("create actor " + path)
+	parentActor, singularName, err := getParentRecursively(actorSystem.rootActor, path)
 	if err != nil {
 		return ActorRef{}, err
 	}
@@ -102,7 +118,6 @@ func (actorSystem *ActorSystem) CreateActor(actor Actor, name string) (ActorRef,
 	parentActor.ChildrenArray = appended
 
 	//Add new actor to the parent children map
-	fmt.Println(parentActor.ChildrenMap)
 	parentActor.ChildrenMap[singularName] = newActor
 
 	//Create the listening channel for the new actor
@@ -112,11 +127,17 @@ func (actorSystem *ActorSystem) CreateActor(actor Actor, name string) (ActorRef,
 	stopChannelForActor := make(chan uint8)
 
 	//Add the channel of the actor to the actor system channel map, with full path name
-	actorSystem.channelMap[name] = channelForActor
+	actorSystem.channelMap[path] = channelForActor
 
 	//Set the created channels
 	newActor.Channel = channelForActor
 	newActor.StopChannel = stopChannelForActor
+
+	//Set actorSystems wait group to actor
+	newActor.waitGroup = actorSystem.waitGroup
+
+	//Increment wait group counter for newly created actor
+	actorSystem.waitGroup.Add(1)
 
 	//Add the new actor pointer to the indexer for actor ref
 	//todo Probably not needed anymore !
@@ -132,17 +153,18 @@ func (actorSystem *ActorSystem) CreateActor(actor Actor, name string) (ActorRef,
 	}, nil
 }
 
+
 /**
 Get actor from system with full path
  */
-func (actorSystem *ActorSystem) GetActorRef(name string) (ActorRef , error) {
-	singularName, parentActor, err := actorSystem.getParent(name)
+func (actorSystem *ActorSystem) GetActorRef(path string) (ActorRef, error) {
+	rootActor := actorSystem.rootActor
+	foundActor, err := getActorFromNodeRecursively(rootActor, 0, pathParser(path))
 	if err != nil {
 		return ActorRef{}, err
 	}
-	actor := parentActor.ChildrenMap[singularName]
-	return ActorRef{
-		defaultActor:actor,
-	}, nil
+	actorRefForFoundActor := convertDefaultActorToActorRef(foundActor)
+	return actorRefForFoundActor, nil
+
 }
 

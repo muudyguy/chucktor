@@ -1,14 +1,16 @@
 package actor
 import (
-	"fmt"
 	"muddle/tree"
+	"fmt"
+	"sync"
+//	"reflect"
 )
 
 /**
 A new actor must implement this to be created
  */
 type Actor interface {
-	OnRecieve(self *ActorRef, msg ActorMessage)
+	OnReceive(self ActorRef, msg ActorMessage)
 }
 
 
@@ -26,6 +28,7 @@ type DefaultActor struct {
 	actorInterface Actor
 	Channel        chan ActorMessage
 	StopChannel    chan uint8
+	waitGroup      *sync.WaitGroup
 	index          int
 }
 
@@ -33,8 +36,10 @@ type DefaultActor struct {
 This method stays alive as long as actor is alive
  */
 func (defaultActor *DefaultActor) runner() {
-	fmt.Println("started")
+	defer defaultActor.waitGroup.Done()
+
 	var stop bool = false
+	fmt.Println("Starting message box for actor " + defaultActor.Name)
 	for {
 		select {
 		case <-defaultActor.StopChannel:
@@ -44,12 +49,15 @@ func (defaultActor *DefaultActor) runner() {
 
 		if !stop {
 			actorMessage := <-defaultActor.Channel
-			defaultActor.actorInterface.OnRecieve(convertDefaultActorToActorRef(defaultActor), actorMessage)
+			defaultActor.actorInterface.OnReceive(convertDefaultActorToActorRef(defaultActor), actorMessage)
 		} else {
+			fmt.Println("Stopping for : " + defaultActor.Name)
 			break
 		}
 
 	}
+
+	fmt.Println("Stopped for : " + defaultActor.Name)
 }
 
 /**
@@ -68,13 +76,13 @@ Users are responsible to retrieve actual Msg from ActorMessage
  */
 type ActorMessage struct {
 	Msg    interface{}
-	Teller *ActorRef
+	Teller ActorRef
 }
 
 /**
 In order to tell an actor a message, this should be used
  */
-func (defaultActor *DefaultActor) Tell(msg interface{}, tellerRef *ActorRef) {
+func (defaultActor *DefaultActor) Tell(msg interface{}, tellerRef ActorRef) {
 	var actorMessage ActorMessage = ActorMessage{
 		Msg: msg,
 		Teller: tellerRef,

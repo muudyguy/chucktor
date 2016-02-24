@@ -7,7 +7,7 @@ type ActorRef struct {
 	defaultActor *DefaultActor
 }
 
-func (actorRef *ActorRef) Tell(msg interface{}, tellerRef *ActorRef) {
+func (actorRef *ActorRef) Tell(msg interface{}, tellerRef ActorRef) {
 
 //	var defaultActor *DefaultActor = actorIndexer[actorRef.actorIndex]
 	actorRef.defaultActor.Tell(msg, tellerRef)
@@ -20,7 +20,7 @@ func (actorRef *ActorRef) Children() []ActorRef {
 	var childrenArray []*DefaultActor = actorRef.defaultActor.ChildrenArray
 	var actorRefSlice []ActorRef
 	for i := 0; i < len(childrenArray); i++ {
-		actorRefSlice = append(actorRefSlice, ActorRef{defaultActor:childrenArray[i]})
+		actorRefSlice = append(actorRefSlice, convertDefaultActorToActorRef(childrenArray[i]))
 	}
 	return actorRefSlice
 }
