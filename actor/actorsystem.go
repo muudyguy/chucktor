@@ -2,14 +2,14 @@ package actor
 import (
 	"strings"
 	"fmt"
-	"sync"
+
 )
 
 type ActorSystem struct {
 	actorMap   map[string]Actor
 	channelMap map[string]chan ActorMessage
 	rootActor  *DefaultActor
-	waitGroup  *sync.WaitGroup
+
 
 }
 
@@ -22,12 +22,8 @@ func (actorSystem *ActorSystem) InitSystem() {
 	actorSystem.rootActor.ChildrenMap = make(map[string]*DefaultActor)
 	actorSystem.channelMap = make(map[string]chan ActorMessage)
 	actorSystem.actorMap = make(map[string]Actor)
-	actorSystem.waitGroup = new(sync.WaitGroup)
-	//todo wht to do with actor interface in master ?
-}
 
-func (actorSystem *ActorSystem) Run() {
-	actorSystem.waitGroup.Wait()
+	//todo wht to do with actor interface in master ?
 }
 
 /**
@@ -123,21 +119,12 @@ func (actorSystem *ActorSystem) CreateActor(actor Actor, path string) (ActorRef,
 	//Create the listening channel for the new actor
 	channelForActor := make(chan ActorMessage)
 
-	//Create the stop channel for the actor
-	stopChannelForActor := make(chan uint8)
-
 	//Add the channel of the actor to the actor system channel map, with full path name
 	actorSystem.channelMap[path] = channelForActor
 
 	//Set the created channels
 	newActor.Channel = channelForActor
-	newActor.StopChannel = stopChannelForActor
 
-	//Set actorSystems wait group to actor
-	newActor.waitGroup = actorSystem.waitGroup
-
-	//Increment wait group counter for newly created actor
-	actorSystem.waitGroup.Add(1)
 
 	//Add the new actor pointer to the indexer for actor ref
 	//todo Probably not needed anymore !

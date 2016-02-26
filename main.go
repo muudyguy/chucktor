@@ -5,6 +5,11 @@ import (
 	"fmt"
 //	"muddle/tree"
 //	"strings"
+	"queue"
+//	"reflect"
+	"reflect"
+	"sync"
+//	"os"
 )
 
 type Msg struct {
@@ -58,8 +63,7 @@ func (myActor MyActor2) OnReceive(self actor.ActorRef, msg actor.ActorMessage) {
 //	return msg.name == toBeCompared.name
 //}
 
-func main() {
-
+func testActorMessaging() {
 	as := actor.ActorSystem{}
 	as.InitSystem()
 	myActor := MyActor{}
@@ -78,30 +82,59 @@ func main() {
 	actor1.Tell(Msg{name:"name", actoRef:actor2}, actor.ActorRef{})
 
 	actor.Run()
-//	if err != nil {
-//		fmt.Println(err)
-//		return
-//	}
-//	actor, err = as.CreateActor(myActor, "/trip/actorname")
-//	if err != nil {
-//		fmt.Println(err)
-//		return
-//	}
-//
-//	fmt.Println(actor)
-//	actor.Tell(Msg{}, nil)
-//
-//	ar, err := as.GetActorRef("trip/actorname/a")
-//	if err != nil {
-//		fmt.Println(err)
-//		return
-//	}
-//	fmt.Println(ar)
-//	var btree tree.BinaryTree = tree.NewBinaryTree()
-//	btree.Add(&Msg{"selam"})
+}
 
-//	a := btree.Search(&Msg{"selam"})
-//	fmt.Printf("%p", a)
+func getfq(q queue.RoundRobinQueue, c chan int) {
+	fmt.Println(q.GetOne())
+	fmt.Println(q.GetOne())
+	fmt.Println(q.GetOne())
+	fmt.Println(q.GetOne())
+	fmt.Println(q.GetOne())
+}
 
+
+func cuser1() {
+
+}
+
+var count int = 0
+var mutex sync.Mutex
+
+func cuser2(c actor.PriorityBasedChannel) {
+
+//		fmt.Println("gonna get now")
+		c.Get()
+		mutex.Lock()
+		count = count + 1
+//		if count > 101 {
+//			os.Exit(0)
+//		}
+
+		fmt.Println(count)
+		mutex.Unlock()
+
+
+}
+
+
+func main() {
+
+	c := actor.PriorityBasedChannel{}
+	c.Init()
+
+	c.SetPriority(1, reflect.TypeOf(Msg{}))
+
+	for i := 0; i < 128; i++ {
+		go cuser2(c)
+	}
+
+
+	for i := 0; i < 128; i++ {
+		c.Send(Msg{name:"yo"})
+	}
+
+
+
+	actor.Run()
 
 }

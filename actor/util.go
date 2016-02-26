@@ -3,6 +3,7 @@ import (
 	"os"
 	"os/signal"
 	"fmt"
+	"reflect"
 )
 
 func convertDefaultActorToActorRef(defaultActor *DefaultActor) ActorRef {
@@ -16,4 +17,15 @@ func Run() {
 	<-c
 	fmt.Println("Exit signal received from os !")
 	os.Exit(0)
+}
+
+func getTypeNameFromType(typ reflect.Type) string {
+	nameOfType := typ.PkgPath() + typ.Name()
+	return nameOfType
+}
+
+
+func getGroupNameFromMsg(msg interface{}) string {
+	typ := reflect.TypeOf(msg)
+	return getTypeNameFromType(typ)
 }
