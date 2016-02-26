@@ -103,7 +103,8 @@ var mutex sync.Mutex
 func cuser2(c actor.PriorityBasedChannel) {
 
 //		fmt.Println("gonna get now")
-		c.Get()
+		m := c.Get()
+		fmt.Println(m)
 		mutex.Lock()
 		count = count + 1
 //		if count > 101 {
@@ -119,8 +120,7 @@ func cuser2(c actor.PriorityBasedChannel) {
 
 func main() {
 
-	c := actor.PriorityBasedChannel{}
-	c.Init()
+	c := actor.NewPriorityBasedChannel()
 
 	c.SetPriority(1, reflect.TypeOf(Msg{}))
 
@@ -128,12 +128,9 @@ func main() {
 		go cuser2(c)
 	}
 
-
 	for i := 0; i < 128; i++ {
 		c.Send(Msg{name:"yo"})
 	}
-
-
 
 	actor.Run()
 

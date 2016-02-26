@@ -25,16 +25,20 @@ type PriorityBasedChannel struct {
 	priorityMapLock       sync.Mutex
 }
 
-func (selfPtr *PriorityBasedChannel) Init() {
-	selfPtr.priorityMap = new(map[string]int)
-	*selfPtr.priorityMap = make(map[string]int)
+func NewPriorityBasedChannel() PriorityBasedChannel {
+	pbc := PriorityBasedChannel{}
+	pbc.priorityMap = new(map[string]int)
+	*pbc.priorityMap = make(map[string]int)
 
-	selfPtr.messageQueue = new(queue.RoundRobinQueue)
+	pbc.messageQueue = queue.NewRoundRobinQueue()
 
-	selfPtr.messageArrivalChannel = make(chan int)
+	pbc.messageArrivalChannel = make(chan int)
 
-	selfPtr.waiterCount = new(int)
+	pbc.waiterCount = new(int)
+
+	return pbc
 }
+
 
 func (selfPtr *PriorityBasedChannel) SetPriority(priority int, msgType reflect.Type) {
 	selfPtr.priorityMapLock.Lock()
