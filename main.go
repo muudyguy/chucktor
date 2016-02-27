@@ -25,7 +25,7 @@ type MyActor struct {
 
 }
 
-func (myActor MyActor) OnReceive(self actor.ActorRef, msg actor.ActorMessage) {
+func (selfPtr *MyActor) OnReceive(self actor.ActorRef, msg actor.ActorMessage) {
 	switch msg.Msg.(type) {
 	case Msg:
 		message := msg.Msg.(Msg)
@@ -36,6 +36,14 @@ func (myActor MyActor) OnReceive(self actor.ActorRef, msg actor.ActorMessage) {
 	default:
 		fmt.Println("Dont know")
 	}
+}
+
+func (selfPtr *MyActor) OnStart(self actor.ActorRef) {
+
+}
+
+func (selfPtr *MyActor) OnStop(self actor.ActorRef) {
+
 }
 
 type MyActor2 struct {
@@ -51,6 +59,14 @@ func (myActor MyActor2) OnReceive(self actor.ActorRef, msg actor.ActorMessage) {
 	default:
 		fmt.Println("dont know the message")
 	}
+}
+
+func (selfPtr *MyActor2) OnStart(self actor.ActorRef) {
+
+}
+
+func (selfPtr *MyActor2) OnStop(self actor.ActorRef) {
+
 }
 //
 //func (msg Msg) Bigger(in tree.Comparable) bool {
@@ -68,13 +84,13 @@ func testActorMessaging() {
 	as.InitSystem()
 	myActor := MyActor{}
 	myActor2 := MyActor2{}
-	actor1, err := as.CreateActor(myActor, "trip")
+	actor1, err := as.CreateActor(&myActor, "trip")
 	if err != nil {
 		panic(err)
 	}
 
 
-	actor2, err2 := as.CreateActor(myActor2, "trip2")
+	actor2, err2 := as.CreateActor(&myActor2, "trip2")
 	if err2 != nil {
 		panic(err)
 	}
@@ -103,34 +119,46 @@ var mutex sync.Mutex
 func cuser2(c actor.PriorityBasedChannel) {
 
 //		fmt.Println("gonna get now")
-		m := c.Get()
-		fmt.Println(m)
+		c.Get()
+
+
 		mutex.Lock()
 		count = count + 1
 //		if count > 101 {
 //			os.Exit(0)
 //		}
 
+
 		fmt.Println(count)
+
+
+
+
 		mutex.Unlock()
-
-
 }
 
-
-func main() {
-
+func testChannel() {
 	c := actor.NewPriorityBasedChannel()
 
 	c.SetPriority(1, reflect.TypeOf(Msg{}))
 
-	for i := 0; i < 128; i++ {
+	//	for i := 0; i < 10000; i++ {
+	//		go cuser2(c)
+	//	}
+	//
+	//	for i := 0; i < 10000; i++ {
+	//		c.Send(Msg{name:"yo"})
+	//	}
+
+	for i := 0; i < 10; i++ {
+		c.Send(Msg{name:"yo"})
 		go cuser2(c)
 	}
+}
 
-	for i := 0; i < 128; i++ {
-		c.Send(Msg{name:"yo"})
-	}
+func main() {
+
+	testActorMessaging()
 
 	actor.Run()
 

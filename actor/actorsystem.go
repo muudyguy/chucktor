@@ -7,10 +7,8 @@ import (
 
 type ActorSystem struct {
 	actorMap   map[string]Actor
-	channelMap map[string]chan ActorMessage
+	channelMap map[string]PriorityBasedChannel
 	rootActor  *DefaultActor
-
-
 }
 
 /**
@@ -20,7 +18,7 @@ func (actorSystem *ActorSystem) InitSystem() {
 	actorSystem.rootActor = new(DefaultActor)
 	actorSystem.rootActor.Name = "root"
 	actorSystem.rootActor.ChildrenMap = make(map[string]*DefaultActor)
-	actorSystem.channelMap = make(map[string]chan ActorMessage)
+	actorSystem.channelMap = make(map[string]PriorityBasedChannel)
 	actorSystem.actorMap = make(map[string]Actor)
 
 	//todo wht to do with actor interface in master ?
@@ -100,10 +98,10 @@ func (actorSystem *ActorSystem) CreateActor(actor Actor, path string) (ActorRef,
 	}
 
 	//Create new actor
-	var newActor *DefaultActor = new(DefaultActor)
-	newActor.Name = singularName
+	var newActor *DefaultActor = NewDefaultActor(singularName, parentActor)
+
 	newActor.actorInterface = actor
-	newActor.Parent = parentActor
+
 	newActor.ChildrenMap = make(map[string]*DefaultActor)
 
 	if parentActor == nil {
@@ -116,15 +114,8 @@ func (actorSystem *ActorSystem) CreateActor(actor Actor, path string) (ActorRef,
 	//Add new actor to the parent children map
 	parentActor.ChildrenMap[singularName] = newActor
 
-	//Create the listening channel for the new actor
-	channelForActor := make(chan ActorMessage)
-
 	//Add the channel of the actor to the actor system channel map, with full path name
-	actorSystem.channelMap[path] = channelForActor
-
-	//Set the created channels
-	newActor.Channel = channelForActor
-
+	actorSystem.channelMap[path] = newActor.Channel
 
 	//Add the new actor pointer to the indexer for actor ref
 	//todo Probably not needed anymore !

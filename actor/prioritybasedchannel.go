@@ -5,6 +5,7 @@ import (
 	"queue"
 	"fmt"
 
+	"sync/atomic"
 )
 
 type ChannelInterface interface {
@@ -18,11 +19,9 @@ type PriorityBasedChannel struct {
 	priorityMap           *map[string]int
 	messageQueue          *queue.RoundRobinQueue
 
-	waiterCount           *int
+	waiterCount           *uint32
 
-	waiterCountLock       sync.Mutex
-	sendLock              sync.Mutex
-	priorityMapLock       sync.Mutex
+	priorityMapLock       *sync.Mutex
 }
 
 func NewPriorityBasedChannel() PriorityBasedChannel {
@@ -30,14 +29,18 @@ func NewPriorityBasedChannel() PriorityBasedChannel {
 	pbc.priorityMap = new(map[string]int)
 	*pbc.priorityMap = make(map[string]int)
 
+	pbc.priorityMapLock = new(sync.Mutex)
+
 	pbc.messageQueue = queue.NewRoundRobinQueue()
 
 	pbc.messageArrivalChannel = make(chan int)
 
-	pbc.waiterCount = new(int)
+	pbc.waiterCount = new(uint32)
 
 	return pbc
 }
+
+
 
 
 func (selfPtr *PriorityBasedChannel) SetPriority(priority int, msgType reflect.Type) {
@@ -52,9 +55,6 @@ func (selfPtr *PriorityBasedChannel) SetPriority(priority int, msgType reflect.T
 Looks a bit messy and low performance
  */
 func (selfPtr *PriorityBasedChannel) Send(msg interface{}) {
-	//Avoid simultaneous/concurrent access of maps
-	selfPtr.sendLock.Lock()
-	defer selfPtr.sendLock.Unlock()
 
 	selfPtr.priorityMapLock.Lock()
 	if len(*selfPtr.priorityMap) == 0 {
@@ -63,14 +63,13 @@ func (selfPtr *PriorityBasedChannel) Send(msg interface{}) {
 	selfPtr.priorityMapLock.Unlock()
 
 	groupName := getGroupNameFromMsg(msg)
-	//	fmt.Println(groupName)
 	selfPtr.messageQueue.Enlist(groupName, msg)
 
-	selfPtr.waiterCountLock.Lock()
-	if *selfPtr.waiterCount > 0 {
+
+	if atomic.LoadUint32(selfPtr.waiterCount) > 0 {
 		selfPtr.messageArrivalChannel <- 1
 	}
-	selfPtr.waiterCountLock.Unlock()
+
 
 
 }
@@ -92,19 +91,14 @@ func (selfPtr *PriorityBasedChannel) Get() interface{} {
 
 	message := selfPtr.availableMessage()
 	if message == nil {
-		selfPtr.waiterCountLock.Lock()
-		*selfPtr.waiterCount = *selfPtr.waiterCount + 1
-		selfPtr.waiterCountLock.Unlock()
+		atomic.AddUint32(selfPtr.waiterCount, 1)
 
 		<-selfPtr.messageArrivalChannel
 
-		selfPtr.waiterCountLock.Lock()
-		*selfPtr.waiterCount -= 1
-		selfPtr.waiterCountLock.Unlock()
+		atomic.AddUint32(selfPtr.waiterCount, ^uint32(0))
 
 		message = selfPtr.availableMessage()
-//		fmt.Println("got the message : ")
-//		fmt.Println(message)
+
 		return message
 	}
 	return message
@@ -113,5 +107,8 @@ func (selfPtr *PriorityBasedChannel) Get() interface{} {
 func (selfPtr *PriorityBasedChannel) setPriorityForMessageType(typ reflect.Type, priority int) {
 	typeName := getTypeNameFromType(typ)
 	selfPtr.messageQueue.SetGroup(typeName, priority)
+
+	selfPtr.priorityMapLock.Lock()
+	defer selfPtr.priorityMapLock.Unlock()
 	(*selfPtr.priorityMap)[typeName] = priority
 }
