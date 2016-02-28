@@ -5,6 +5,7 @@ import (
 //	"reflect"
 	"sync/atomic"
 	"reflect"
+	"strconv"
 )
 
 /**
@@ -47,7 +48,7 @@ func NewDefaultActor(name string, parent *DefaultActor) *DefaultActor {
 	da.justStarted = new(uint32)
 	*da.justStarted = 1
 
-	da.Channel = NewPriorityBasedChannel()
+	da.Channel = NewPriorityBasedChannel(name + " channel")
 
 	da.Channel.setPriorityForMessageType(reflect.TypeOf(ActorMessage{}), 1)
 
@@ -63,17 +64,19 @@ func (selfPtr *DefaultActor) runner() {
 		atomic.CompareAndSwapUint32(selfPtr.justStarted, 1, 0)
 	}
 
-	fmt.Println("Starting message box for actor " + selfPtr.Name)
 	for {
 		actorMessage := selfPtr.Channel.Get()
 		if atomic.LoadUint32(selfPtr.stopped) == 1 {
 			selfPtr.actorInterface.OnStop(convertDefaultActorToActorRef(selfPtr))
 			break
 		}
+		fmt.Println("Got message for actor : " + selfPtr.Name)
+		fmt.Println(actorMessage)
+		fmt.Println("now total size of actor " + selfPtr.Name + "'s channel is reduced to " + strconv.Itoa(selfPtr.Channel.messageQueue.GetTotalItemCount()))
 		selfPtr.actorInterface.OnReceive(convertDefaultActorToActorRef(selfPtr), actorMessage.(ActorMessage))
 	}
 
-	fmt.Println("Stopped for : " + selfPtr.Name)
+
 }
 
 /**

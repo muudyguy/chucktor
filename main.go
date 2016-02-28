@@ -5,7 +5,7 @@ import (
 	"fmt"
 //	"muddle/tree"
 //	"strings"
-	"queue"
+//	"queue"
 //	"reflect"
 	"reflect"
 	"sync"
@@ -32,9 +32,9 @@ func (selfPtr *MyActor) OnReceive(self actor.ActorRef, msg actor.ActorMessage) {
 		actorToForward := message.actoRef
 		actorToForward.Tell(message, self)
 	case Msg2:
-		fmt.Println("I am actor1 and received reply from actor2, it has in it : " + msg.Msg.(Msg2).name)
+//		fmt.Println("I am actor1 and received reply from actor2, it has in it : " + msg.Msg.(Msg2).name)
 	default:
-		fmt.Println("Dont know")
+//		fmt.Println("Dont know")
 	}
 }
 
@@ -53,7 +53,7 @@ type MyActor2 struct {
 func (myActor MyActor2) OnReceive(self actor.ActorRef, msg actor.ActorMessage) {
 	switch msg.Msg.(type) {
 	case Msg:
-		fmt.Println("received message from actor1")
+//		fmt.Println("received message from actor1")
 		teller := msg.Teller
 		teller.Tell(Msg2{"answer"}, self)
 	default:
@@ -97,20 +97,12 @@ func testActorMessaging() {
 
 	actor1.Tell(Msg{name:"name", actoRef:actor2}, actor.ActorRef{})
 
+	if err != nil {
+		panic(err)
+	}
+	actor1.Tell(Msg{name:"name", actoRef:actor2}, actor.ActorRef{})
+
 	actor.Run()
-}
-
-func getfq(q queue.RoundRobinQueue, c chan int) {
-	fmt.Println(q.GetOne())
-	fmt.Println(q.GetOne())
-	fmt.Println(q.GetOne())
-	fmt.Println(q.GetOne())
-	fmt.Println(q.GetOne())
-}
-
-
-func cuser1() {
-
 }
 
 var count int = 0
@@ -138,7 +130,7 @@ func cuser2(c actor.PriorityBasedChannel) {
 }
 
 func testChannel() {
-	c := actor.NewPriorityBasedChannel()
+	c := actor.NewPriorityBasedChannel("c")
 
 	c.SetPriority(1, reflect.TypeOf(Msg{}))
 
@@ -154,6 +146,19 @@ func testChannel() {
 		c.Send(Msg{name:"yo"})
 		go cuser2(c)
 	}
+}
+
+func testChannelGet() {
+	c := actor.NewPriorityBasedChannel("c")
+
+	c.SetPriority(1, reflect.TypeOf(Msg{}))
+
+	c.Send(Msg{name:"yo"})
+	c.Send(Msg{name:"y2"})
+
+	fmt.Println(c.Get())
+
+	fmt.Println(c.Get())
 }
 
 func main() {
