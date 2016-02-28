@@ -39,11 +39,15 @@ func (selfPtr *MyActor) OnReceive(self actor.ActorRef, msg actor.ActorMessage) {
 }
 
 func (selfPtr *MyActor) OnStart(self actor.ActorRef) {
-
+	fmt.Println("onStart callback Ran")
 }
 
 func (selfPtr *MyActor) OnStop(self actor.ActorRef) {
+	fmt.Println("onStop callback ran")
+}
 
+func (selfPtr *MyActor) OnRestart(self actor.ActorRef) {
+	fmt.Println("onRestart callback ran")
 }
 
 type MyActor2 struct {
@@ -66,6 +70,10 @@ func (selfPtr *MyActor2) OnStart(self actor.ActorRef) {
 }
 
 func (selfPtr *MyActor2) OnStop(self actor.ActorRef) {
+
+}
+
+func (selfPtr *MyActor2) OnRestart(self actor.ActorRef) {
 
 }
 //
@@ -97,10 +105,14 @@ func testActorMessaging() {
 
 	actor1.Tell(Msg{name:"name", actoRef:actor2}, actor.ActorRef{})
 
-	if err != nil {
-		panic(err)
+	for i := 0; i < 2; i++ {
+		actor1.Tell(Msg{name:"name", actoRef:actor2}, actor.ActorRef{})
+//		actor1.Tell(Msg{name:"name", actoRef:actor2}, actor.ActorRef{})
 	}
-	actor1.Tell(Msg{name:"name", actoRef:actor2}, actor.ActorRef{})
+
+	actor1.Stop()
+	actor1.ReStart()
+
 
 	actor.Run()
 }

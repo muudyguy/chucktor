@@ -24,3 +24,11 @@ func (actorRef *ActorRef) Children() []ActorRef {
 	}
 	return actorRefSlice
 }
+
+func (selfPtr *ActorRef) Stop() {
+	selfPtr.defaultActor.Stop()
+}
+
+func (selfPtr *ActorRef) ReStart() {
+	selfPtr.defaultActor.Restart()
+}

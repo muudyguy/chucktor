@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"reflect"
 	"strconv"
+	"sync"
 )
 
 /**
@@ -15,6 +16,7 @@ type Actor interface {
 	OnReceive(self ActorRef, msg ActorMessage)
 	OnStart(self ActorRef)
 	OnStop(self ActorRef)
+	OnRestart(self ActorRef)
 }
 
 
@@ -25,16 +27,22 @@ This brings memory overhead, but must be a bit faster if it was to be kept
 in a map only
  */
 type DefaultActor struct {
-	Name           string
-	ChildrenArray  []*DefaultActor
-	ChildrenMap    map[string]*DefaultActor
-	Parent         *DefaultActor
-	actorInterface Actor
-	Channel        PriorityBasedChannel
-	index          int
+	Name             string
+	ChildrenArray    []*DefaultActor
+	ChildrenMap      map[string]*DefaultActor
+	Parent           *DefaultActor
+	actorInterface   Actor
+	Channel          PriorityBasedChannel
+	index            int
 
-	stopped        *uint32
-	justStarted	   *uint32
+	stopped          *uint32
+
+	restarted        *uint32
+	restartedChannel chan int
+	stoppedChannel   chan int
+	justStarted      *uint32
+
+	startStopLock    *sync.Mutex
 }
 
 func NewDefaultActor(name string, parent *DefaultActor) *DefaultActor {
@@ -48,9 +56,17 @@ func NewDefaultActor(name string, parent *DefaultActor) *DefaultActor {
 	da.justStarted = new(uint32)
 	*da.justStarted = 1
 
+	da.restarted = new(uint32)
+	*da.restarted = 0
+
 	da.Channel = NewPriorityBasedChannel(name + " channel")
 
 	da.Channel.setPriorityForMessageType(reflect.TypeOf(ActorMessage{}), 1)
+
+	da.restartedChannel = make(chan int)
+	da.stoppedChannel = make(chan int, 1)
+
+	da.startStopLock = new(sync.Mutex)
 
 	return &da
 }
@@ -58,18 +74,27 @@ func NewDefaultActor(name string, parent *DefaultActor) *DefaultActor {
 /**
 This method stays alive as long as actor is alive
  */
-func (selfPtr *DefaultActor) runner() {
-	if atomic.LoadUint32(selfPtr.justStarted) == 1 {
-		selfPtr.actorInterface.OnStart(convertDefaultActorToActorRef(selfPtr))
-		atomic.CompareAndSwapUint32(selfPtr.justStarted, 1, 0)
+func (selfPtr *DefaultActor) runner(restarted bool) {
+	if restarted {
+		selfPtr.actorInterface.OnRestart(convertDefaultActorToActorRef(selfPtr))
+	} else {
+		if atomic.LoadUint32(selfPtr.justStarted) == 1 {
+			selfPtr.actorInterface.OnStart(convertDefaultActorToActorRef(selfPtr))
+			atomic.CompareAndSwapUint32(selfPtr.justStarted, 1, 0)
+		}
 	}
 
 	for {
-		actorMessage := selfPtr.Channel.Get()
+
+		//todo A better way to stop?
 		if atomic.LoadUint32(selfPtr.stopped) == 1 {
 			selfPtr.actorInterface.OnStop(convertDefaultActorToActorRef(selfPtr))
+			selfPtr.stoppedChannel <- 1
+			fmt.Println("sent st channel")
 			break
 		}
+
+		actorMessage := selfPtr.Channel.Get()
 		fmt.Println("Got message for actor : " + selfPtr.Name)
 		fmt.Println(actorMessage)
 		fmt.Println("now total size of actor " + selfPtr.Name + "'s channel is reduced to " + strconv.Itoa(selfPtr.Channel.messageQueue.GetTotalItemCount()))
@@ -82,8 +107,16 @@ func (selfPtr *DefaultActor) runner() {
 /**
 Starts the actor worker
  */
-func (defaultActor *DefaultActor) Start() {
-	go defaultActor.runner()
+func (selfPtr *DefaultActor) Start() {
+	//If stopped is 1 make it 0
+	atomic.CompareAndSwapUint32(selfPtr.stopped, 1, 0)
+	go selfPtr.runner(false)
+}
+
+func (selfPtr *DefaultActor) restart() {
+	//If stopped is 1 make it 0
+	atomic.CompareAndSwapUint32(selfPtr.stopped, 1, 0)
+	go selfPtr.runner(true)
 }
 
 
@@ -116,7 +149,42 @@ func (selfPtr *DefaultActor) Tell(msg interface{}, tellerRef ActorRef) {
 Stops the actor, but does not delete it
  */
 func (selfPtr *DefaultActor) Stop() {
+	selfPtr.startStopLock.Lock()
+	defer selfPtr.startStopLock.Unlock()
+	fmt.Println("stopping")
+	if atomic.LoadUint32(selfPtr.stopped) == 0 {
+		fmt.Println("stop was 0")
+		atomic.CompareAndSwapUint32(selfPtr.stopped, 0, 1)
+		selfPtr.Tell(nil, ActorRef{}) //If there are no messages send a dummy message???
+
+		//This makes stop stall, maybe run this with goRoutine ?
+
+		<- selfPtr.stoppedChannel
+
+	}
+	fmt.Println("Stop released the lock")
+}
+
+/**
+Restarts the actor
+ */
+func (selfPtr *DefaultActor) Restart() {
+	selfPtr.startStopLock.Lock()
+	defer selfPtr.startStopLock.Unlock()
+
+	fmt.Println("Started restarting!")
+
 	if atomic.LoadUint32(selfPtr.stopped) == 0 {
 		atomic.CompareAndSwapUint32(selfPtr.stopped, 0, 1)
+		selfPtr.Tell(nil, ActorRef{}) //If there are no messages send a dummy message???
+
+		<- selfPtr.stoppedChannel
+		fmt.Println("stopped")
+	} else {
+		selfPtr.restart()
 	}
+
+
+
+	fmt.Println("restarted")
 }
