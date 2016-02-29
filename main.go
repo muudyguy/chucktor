@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"sync"
 //	"os"
+	"strconv"
+	"runtime"
 )
 
 type Msg struct {
@@ -117,6 +119,21 @@ func testActorMessaging() {
 	actor.Run()
 }
 
+func testActorCreation() {
+	as := actor.ActorSystem{}
+	as.InitSystem()
+
+	for i := 0; i < 1000000; i++ {
+		myActor := MyActor{}
+		actor1, err := as.CreateActor(&myActor, strconv.Itoa(i))
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(actor1)
+
+	}
+}
+
 var count int = 0
 var mutex sync.Mutex
 
@@ -174,8 +191,8 @@ func testChannelGet() {
 }
 
 func main() {
-
-	testActorMessaging()
+	fmt.Println(runtime.GOMAXPROCS(0))
+//	testActorCreation()
 
 	actor.Run()
 

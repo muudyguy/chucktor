@@ -26,7 +26,7 @@ func (actorRef *ActorRef) Children() []ActorRef {
 }
 
 func (selfPtr *ActorRef) Stop() {
-	selfPtr.defaultActor.Stop()
+	selfPtr.defaultActor.StopRightAway()
 }
 
 func (selfPtr *ActorRef) ReStart() {

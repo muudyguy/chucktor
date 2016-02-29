@@ -2,7 +2,6 @@ package actor
 import (
 
 	"fmt"
-//	"reflect"
 	"sync/atomic"
 	"reflect"
 	"strconv"
@@ -22,7 +21,7 @@ type Actor interface {
 
 /**
 Actual actors kept within the system
-Childrens are kept in a slice, also a map
+Children are kept in a slice, also a map
 This brings memory overhead, but must be a bit faster if it was to be kept
 in a map only
  */
@@ -90,11 +89,19 @@ func (selfPtr *DefaultActor) runner(restarted bool) {
 		if atomic.LoadUint32(selfPtr.stopped) == 1 {
 			selfPtr.actorInterface.OnStop(convertDefaultActorToActorRef(selfPtr))
 			selfPtr.stoppedChannel <- 1
-			fmt.Println("sent st channel")
 			break
 		}
 
 		actorMessage := selfPtr.Channel.Get()
+
+		switch actorMessage.(type) {
+		case DummyMessage:
+			continue
+		//StoppedAfterQueueComplete
+		case StopMessage:
+			selfPtr.actorInterface.OnStop(convertDefaultActorToActorRef(selfPtr))
+			break
+		}
 		fmt.Println("Got message for actor : " + selfPtr.Name)
 		fmt.Println(actorMessage)
 		fmt.Println("now total size of actor " + selfPtr.Name + "'s channel is reduced to " + strconv.Itoa(selfPtr.Channel.messageQueue.GetTotalItemCount()))
@@ -145,17 +152,35 @@ func (selfPtr *DefaultActor) Tell(msg interface{}, tellerRef ActorRef) {
 	selfPtr.Channel.Send(actorMessage)
 }
 
+type StopMessage struct  {
+
+}
+
+
+type DummyMessage struct {
+
+}
+
 /**
-Stops the actor, but does not delete it
+Stops the actor after the existing messages are processed
+Does not delete the actor
  */
-func (selfPtr *DefaultActor) Stop() {
+func (selfPtr *DefaultActor) StopAfterQueueComplete() {
+	selfPtr.Tell(StopMessage{}, ActorRef{})
+}
+
+/**
+Stops the actor after the current message is processed
+Does not delete the actor
+ */
+func (selfPtr *DefaultActor) StopRightAway() {
 	selfPtr.startStopLock.Lock()
 	defer selfPtr.startStopLock.Unlock()
 	fmt.Println("stopping")
 	if atomic.LoadUint32(selfPtr.stopped) == 0 {
 		fmt.Println("stop was 0")
 		atomic.CompareAndSwapUint32(selfPtr.stopped, 0, 1)
-		selfPtr.Tell(nil, ActorRef{}) //If there are no messages send a dummy message???
+		selfPtr.Tell(DummyMessage{}, ActorRef{}) //If there are no messages send a dummy message???
 
 		//This makes stop stall, maybe run this with goRoutine ?
 
@@ -180,11 +205,10 @@ func (selfPtr *DefaultActor) Restart() {
 
 		<- selfPtr.stoppedChannel
 		fmt.Println("stopped")
-	} else {
-		selfPtr.restart()
+
 	}
 
-
+	selfPtr.restart()
 
 	fmt.Println("restarted")
 }
