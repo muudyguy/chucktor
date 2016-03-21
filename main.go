@@ -11,7 +11,7 @@ import (
 	"sync"
 //	"os"
 	"strconv"
-	"runtime"
+//	"runtime"
 )
 
 type Msg struct {
@@ -24,10 +24,10 @@ type Msg2 struct {
 }
 
 type MyActor struct {
-
+	actor.DefaultActorInterface
 }
 
-func (selfPtr *MyActor) OnReceive(self actor.ActorRef, msg actor.ActorMessage) {
+func (selfPtr *MyActor) OnReceive(self actor.ActorRef, msg actor.ActorMessage) error {
 	switch msg.Msg.(type) {
 	case Msg:
 		message := msg.Msg.(Msg)
@@ -38,69 +38,67 @@ func (selfPtr *MyActor) OnReceive(self actor.ActorRef, msg actor.ActorMessage) {
 	default:
 //		fmt.Println("Dont know")
 	}
+
+	return nil
 }
 
-func (selfPtr *MyActor) OnStart(self actor.ActorRef) {
+func (selfPtr *MyActor) OnStart(self actor.ActorRef) error {
 	fmt.Println("onStart callback Ran")
+	return nil
 }
 
-func (selfPtr *MyActor) OnStop(self actor.ActorRef) {
+func (selfPtr *MyActor) OnStop(self actor.ActorRef) error {
 	fmt.Println("onStop callback ran")
+	return nil
 }
 
-func (selfPtr *MyActor) OnRestart(self actor.ActorRef) {
+func (selfPtr *MyActor) OnRestart(self actor.ActorRef) error {
 	fmt.Println("onRestart callback ran")
+	return nil
 }
 
 type MyActor2 struct {
-
+	actor.DefaultActorInterface
 }
 
-func (myActor MyActor2) OnReceive(self actor.ActorRef, msg actor.ActorMessage) {
+func (myActor MyActor2) OnReceive(self actor.ActorRef, msg actor.ActorMessage) error {
 	switch msg.Msg.(type) {
 	case Msg:
-//		fmt.Println("received message from actor1")
 		teller := msg.Teller
 		teller.Tell(Msg2{"answer"}, self)
 	default:
 		fmt.Println("dont know the message")
 	}
+	return nil
 }
 
-func (selfPtr *MyActor2) OnStart(self actor.ActorRef) {
-
+func (selfPtr *MyActor2) OnStart(self actor.ActorRef) error {
+	return nil
 }
 
-func (selfPtr *MyActor2) OnStop(self actor.ActorRef) {
-
+func (selfPtr *MyActor2) OnStop(self actor.ActorRef) error {
+	return nil
 }
 
-func (selfPtr *MyActor2) OnRestart(self actor.ActorRef) {
-
+func (selfPtr *MyActor2) OnRestart(self actor.ActorRef) error {
+	return nil
 }
-//
-//func (msg Msg) Bigger(in tree.Comparable) bool {
-//	toBeCompared := in.(*Msg)
-//	return msg.name > toBeCompared.name
-//}
-//
-//func (msg Msg) Equals(in tree.Comparable) bool {
-//	toBeCompared := in.(*Msg)
-//	return msg.name == toBeCompared.name
-//}
 
 func testActorMessaging() {
-	as := actor.ActorSystem{}
-	as.InitSystem()
+	as := actor.NewActorSystem(4)
 	myActor := MyActor{}
 	myActor2 := MyActor2{}
 	actor1, err := as.CreateActor(&myActor, "trip")
+	actor1.SetPriority(reflect.TypeOf(Msg{}), 1)
+	actor1.SetPriority(reflect.TypeOf(Msg2{}), 1)
 	if err != nil {
 		panic(err)
 	}
 
 
-	actor2, err2 := as.CreateActor(&myActor2, "trip2")
+	actor2, err2 := as.CreateActor(&myActor2, "trip/trip2")
+	actor2.SetPriority(reflect.TypeOf(Msg{}), 1)
+	actor2.SetPriority(reflect.TypeOf(Msg2{}), 1)
 	if err2 != nil {
 		panic(err)
 	}
@@ -111,12 +109,6 @@ func testActorMessaging() {
 		actor1.Tell(Msg{name:"name", actoRef:actor2}, actor.ActorRef{})
 //		actor1.Tell(Msg{name:"name", actoRef:actor2}, actor.ActorRef{})
 	}
-
-	actor1.Stop()
-	actor1.ReStart()
-
-
-	actor.Run()
 }
 
 func testActorCreation() {
@@ -191,8 +183,8 @@ func testChannelGet() {
 }
 
 func main() {
-	fmt.Println(runtime.GOMAXPROCS(0))
-//	testActorCreation()
+//	fmt.Println(runtime.GOMAXPROCS(0))
+	testActorMessaging()
 
 	actor.Run()
 

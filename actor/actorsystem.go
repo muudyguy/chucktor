@@ -2,26 +2,69 @@ package actor
 import (
 	"strings"
 	"fmt"
-
+	"sync"
+	"queue"
 )
 
 type ActorSystem struct {
-	actorMap   map[string]Actor
-	channelMap map[string]PriorityBasedChannel
-	rootActor  *DefaultActor
+	actorMap     map[string]ActorInterface
+	rootActor    *DefaultActor
+	actorChannel chan *DefaultActor
+
+	executorNumber int
+	executors []*ActorSystemExecutor
+}
+
+func NewActorSystem(executorNumber int) *ActorSystem {
+	as := &ActorSystem{}
+	as.rootActor = newRootActor(as)
+	as.actorMap = make(map[string]ActorInterface)
+	as.createAndStartExecutors(executorNumber)
+	as.actorChannel = make(chan *DefaultActor)
+	return as
 }
 
 /**
 Initialize the pointers within actor system struct
  */
-func (actorSystem *ActorSystem) InitSystem() {
-	actorSystem.rootActor = new(DefaultActor)
-	actorSystem.rootActor.Name = "root"
-	actorSystem.rootActor.ChildrenMap = make(map[string]*DefaultActor)
-	actorSystem.channelMap = make(map[string]PriorityBasedChannel)
-	actorSystem.actorMap = make(map[string]Actor)
+func (selfPtr *ActorSystem) InitSystem() {
+	selfPtr.rootActor = newRootActor(selfPtr)
+	selfPtr.actorMap = make(map[string]ActorInterface)
+}
 
-	//todo wht to do with actor interface in master ?
+func newRootActor(actorSystem *ActorSystem) *DefaultActor {
+	da := DefaultActor{}
+	da.Name = "root"
+	da.Parent = nil
+
+	da.stop = new(uint32)
+	*da.stop = 0
+
+	da.justStarted = new(uint32)
+	*da.justStarted = 1
+
+	da.ActorSystem = actorSystem
+
+	da.ChildrenArray = make([]*DefaultActor, 0, 20) // How much default cap ?
+
+	da.ChildrenMap = make(map[string]*DefaultActor)
+
+	da.messageQueue = queue.NewRoundRobinQueue()
+
+	da.actorInterface = nil //todo Implement a default root interface for messages
+
+	da.startStopLock = new(sync.Mutex)
+
+	return &da
+}
+
+//Create and start the executors responsible to process actor messages
+func (selfPtr *ActorSystem) createAndStartExecutors(executorNumber int) {
+	for i := 0; i < executorNumber; i++ {
+		executor := newActorSystemExecutor(selfPtr)
+		selfPtr.executors = append(selfPtr.executors, executor)
+		go executor.startExecution()
+	}
 }
 
 /**
@@ -43,7 +86,9 @@ Get the actor corresponding to the path, starting from the given DefaultActor po
 Runs recursively
 //todo Implement a nonrecursive version for the future
  */
-func getActorFromNodeRecursively(defaultActor *DefaultActor, currentIndexOfPathElement int, pathSlice []string) (*DefaultActor, error) {
+func getActorFromNodeRecursively(defaultActor *DefaultActor, currentIndexOfPathElement int,
+		pathSlice []string) (*DefaultActor, error) {
+
 	nodeForPathElement, isFound := defaultActor.ChildrenMap[pathSlice[currentIndexOfPathElement]]
 	if isFound {
 		//This is the last part of the uri path
@@ -88,16 +133,17 @@ func getParentRecursively(defaultActor *DefaultActor, path string) (*DefaultActo
 }
 
 /**
-Create actor
+
  */
-func (actorSystem *ActorSystem) CreateActor(actor Actor, path string) (ActorRef, error) {
-	fmt.Println("create actor " + path)
+func createActorOnParent(actor ActorInterface, actorSystem *ActorSystem, path string,
+		parentStartActor *DefaultActor) (ActorRef, error) {
+	//Create new actor
 	parentActor, singularName, err := getParentRecursively(actorSystem.rootActor, path)
 	if err != nil {
 		return ActorRef{}, err
 	}
 
-	//Create new actor
+
 	var newActor *DefaultActor = NewDefaultActor(singularName, parentActor)
 
 	newActor.actorInterface = actor
@@ -114,9 +160,6 @@ func (actorSystem *ActorSystem) CreateActor(actor Actor, path string) (ActorRef,
 	//Add new actor to the parent children map
 	parentActor.ChildrenMap[singularName] = newActor
 
-	//Add the channel of the actor to the actor system channel map, with full path name
-	actorSystem.channelMap[path] = newActor.Channel
-
 	//Add the new actor pointer to the indexer for actor ref
 	//todo Probably not needed anymore !
 	actorIndexer = append(actorIndexer, newActor)
@@ -129,6 +172,13 @@ func (actorSystem *ActorSystem) CreateActor(actor Actor, path string) (ActorRef,
 		actorIndex: newActor.index, //todo Not needed anymore ?
 		defaultActor:newActor,
 	}, nil
+}
+
+/**
+Create actor
+ */
+func (selfPtr *ActorSystem) CreateActor(actor ActorInterface, path string) (ActorRef, error) {
+	return createActorOnParent(actor, selfPtr, path, selfPtr.rootActor)
 }
 
 
