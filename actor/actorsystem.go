@@ -8,8 +8,8 @@ import (
 
 type ActorSystem struct {
 	actorMap     map[string]ActorInterface
-	rootActor    *DefaultActor
-	actorChannel chan *DefaultActor
+	rootActor    *CoreActor
+	actorChannel chan *CoreActor
 
 	executorNumber int
 	executors []*ActorSystemExecutor
@@ -20,7 +20,7 @@ func NewActorSystem(executorNumber int) *ActorSystem {
 	as.rootActor = newRootActor(as)
 	as.actorMap = make(map[string]ActorInterface)
 	as.createAndStartExecutors(executorNumber)
-	as.actorChannel = make(chan *DefaultActor)
+	as.actorChannel = make(chan *CoreActor)
 	return as
 }
 
@@ -32,8 +32,8 @@ func (selfPtr *ActorSystem) InitSystem() {
 	selfPtr.actorMap = make(map[string]ActorInterface)
 }
 
-func newRootActor(actorSystem *ActorSystem) *DefaultActor {
-	da := DefaultActor{}
+func newRootActor(actorSystem *ActorSystem) *CoreActor {
+	da := CoreActor{}
 	da.Name = "root"
 	da.Parent = nil
 
@@ -45,9 +45,9 @@ func newRootActor(actorSystem *ActorSystem) *DefaultActor {
 
 	da.ActorSystem = actorSystem
 
-	da.ChildrenArray = make([]*DefaultActor, 0, 20) // How much default cap ?
+	da.ChildrenArray = make([]*CoreActor, 0, 20) // How much default cap ?
 
-	da.ChildrenMap = make(map[string]*DefaultActor)
+	da.ChildrenMap = make(map[string]*CoreActor)
 
 	da.messageQueue = queue.NewRoundRobinQueue()
 
@@ -86,8 +86,8 @@ Get the actor corresponding to the path, starting from the given DefaultActor po
 Runs recursively
 //todo Implement a nonrecursive version for the future
  */
-func getActorFromNodeRecursively(defaultActor *DefaultActor, currentIndexOfPathElement int,
-		pathSlice []string) (*DefaultActor, error) {
+func getActorFromNodeRecursively(defaultActor *CoreActor, currentIndexOfPathElement int,
+		pathSlice []string) (*CoreActor, error) {
 
 	nodeForPathElement, isFound := defaultActor.ChildrenMap[pathSlice[currentIndexOfPathElement]]
 	if isFound {
@@ -118,7 +118,7 @@ This method is used with an actor path which is not yet created
 Once the parent of the actor to be created is found, the new actor
 is created as a child under that actor
  */
-func getParentRecursively(defaultActor *DefaultActor, path string) (*DefaultActor, string, error) {
+func getParentRecursively(defaultActor *CoreActor, path string) (*CoreActor, string, error) {
 	pathSliceUntilFutureParentName, nameOfFutureActor := getPathUntilParentAndNameOfFutureActor(path)
 
 	if len(pathSliceUntilFutureParentName) == 0 {
@@ -136,7 +136,7 @@ func getParentRecursively(defaultActor *DefaultActor, path string) (*DefaultActo
 
  */
 func createActorOnParent(actor ActorInterface, actorSystem *ActorSystem, path string,
-		parentStartActor *DefaultActor) (ActorRef, error) {
+		parentStartActor *CoreActor) (ActorRef, error) {
 	//Create new actor
 	parentActor, singularName, err := getParentRecursively(actorSystem.rootActor, path)
 	if err != nil {
@@ -144,11 +144,11 @@ func createActorOnParent(actor ActorInterface, actorSystem *ActorSystem, path st
 	}
 
 
-	var newActor *DefaultActor = NewDefaultActor(singularName, parentActor)
+	var newActor *CoreActor = NewDefaultActor(singularName, parentActor)
 
 	newActor.actorInterface = actor
 
-	newActor.ChildrenMap = make(map[string]*DefaultActor)
+	newActor.ChildrenMap = make(map[string]*CoreActor)
 
 	if parentActor == nil {
 		return ActorRef{}, fmt.Errorf("In correct path, parent does not exist")

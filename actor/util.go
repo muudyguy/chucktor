@@ -6,7 +6,7 @@ import (
 	"reflect"
 )
 
-func convertDefaultActorToActorRef(defaultActor *DefaultActor) ActorRef {
+func convertDefaultActorToActorRef(defaultActor *CoreActor) ActorRef {
 	actorRef := ActorRef{defaultActor.index, defaultActor}
 	return actorRef
 }

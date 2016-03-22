@@ -18,11 +18,11 @@ Children are kept in a slice, also a map
 This brings memory overhead, but must be a bit faster if it was to be kept
 in a map only
  */
-type DefaultActor struct {
+type CoreActor struct {
 	Name           string
-	ChildrenArray  []*DefaultActor
-	ChildrenMap    map[string]*DefaultActor
-	Parent         *DefaultActor
+	ChildrenArray  []*CoreActor
+	ChildrenMap    map[string]*CoreActor
+	Parent         *CoreActor
 	actorInterface ActorInterface
 	messageQueue   *queue.RoundRobinQueue
 	index          int     //todo is it going to be used
@@ -41,8 +41,8 @@ type DefaultActor struct {
 	selfLock       *sync.Mutex
 }
 
-func NewDefaultActor(name string, parent *DefaultActor) *DefaultActor {
-	da := DefaultActor{}
+func NewDefaultActor(name string, parent *CoreActor) *CoreActor {
+	da := CoreActor{}
 	da.Name = name
 	da.Parent = parent
 
@@ -72,7 +72,7 @@ func NewDefaultActor(name string, parent *DefaultActor) *DefaultActor {
 }
 
 //Set priority for message
-func (selfPtr *DefaultActor) SetMessagePriority(typ reflect.Type, priority int) {
+func (selfPtr *CoreActor) SetMessagePriority(typ reflect.Type, priority int) {
 	selfPtr.messageQueue.SetGroup(getTypeNameFromType(typ), priority)
 }
 
@@ -82,19 +82,19 @@ Uint32 type could be changed for something else later using atomic.Value
 I am not sure which one is more efficient. A benchmark could be good
  */
 
-func (selfPtr *DefaultActor) getMessageQueueCount() int {
+func (selfPtr *CoreActor) getMessageQueueCount() int {
 	return selfPtr.messageQueue.GetTotalItemCount()
 }
 
-func (selfPtr *DefaultActor) atomicallySetPtr(ptr *uint32) {
+func (selfPtr *CoreActor) atomicallySetPtr(ptr *uint32) {
 	atomic.CompareAndSwapUint32(ptr, 0, 1)
 }
 
-func (selftPtr *DefaultActor) atomicallyResetPtr(ptr *uint32) {
+func (selftPtr *CoreActor) atomicallyResetPtr(ptr *uint32) {
 	atomic.CompareAndSwapUint32(ptr, 1, 0)
 }
 
-func (selfPtr *DefaultActor) atomicallyCheckPtr(ptr *uint32) uint32 {
+func (selfPtr *CoreActor) atomicallyCheckPtr(ptr *uint32) uint32 {
 	return atomic.LoadUint32(ptr)
 }
 
@@ -111,13 +111,13 @@ func recoverFunc(actor ActorInterface) {
 	}
 }
 
-func (selfPtr *DefaultActor) handleError(err error) {
+func (selfPtr *CoreActor) handleError(err error) {
 
 }
 
 //This is the main runner of the actor
 //The real stuff happens here
-func (selfPtr *DefaultActor) run() {
+func (selfPtr *CoreActor) run() {
 	//Run recover in case an error occurs
 	defer recoverFunc(selfPtr.actorInterface)
 	defer selfPtr.selfLock.Unlock()
@@ -168,6 +168,7 @@ func (selfPtr *DefaultActor) run() {
 
 		fmt.Println("now total size of actor " + selfPtr.Name + "'s channel is reduced to " + strconv.Itoa(selfPtr.messageQueue.GetTotalItemCount()))
 		err := selfPtr.actorInterface.OnReceive(convertDefaultActorToActorRef(selfPtr), actorMessage)
+		fmt.Println("Got over run")
 		if err != nil {
 			panic(err)
 		}
@@ -179,7 +180,7 @@ func (selfPtr *DefaultActor) run() {
 /**
 Starts the actor
  */
-func (selfPtr *DefaultActor) Start() {
+func (selfPtr *CoreActor) Start() {
 	//If stopped is 1 make it 0
 	selfPtr.atomicallyResetPtr(selfPtr.stop)
 	selfPtr.atomicallyResetPtr(selfPtr.stopped)
@@ -200,7 +201,8 @@ type ActorMessage struct {
 /**
 In order to tell an actor a message, this should be used
  */
-func (selfPtr *DefaultActor) Tell(msg interface{}, tellerRef ActorRef) error {
+func (selfPtr *CoreActor) Tell(msg interface{}, tellerRef ActorRef) error {
+
 	if selfPtr.atomicallyCheckPtr(selfPtr.pendingStop) == 0 && selfPtr.atomicallyCheckPtr(selfPtr.stop) == 0 {
 		//todo Do we need actor message?
 		var actorMessage ActorMessage = ActorMessage{
@@ -216,10 +218,12 @@ func (selfPtr *DefaultActor) Tell(msg interface{}, tellerRef ActorRef) error {
 		//Enlist itself to be ran for this message
 		//todo Would this create overhead somehow?
 		//todo Fairness, starvation problems ?
+		fmt.Println("Started telling")
 		selfPtr.ActorSystem.actorChannel <- selfPtr
-
+		fmt.Println("Done telling")
 		return nil
 	}
+
 
 	return fmt.Errorf("This actor is pending for stop or is stopped, this message will not be processed")
 }
@@ -229,7 +233,7 @@ func (selfPtr *DefaultActor) Tell(msg interface{}, tellerRef ActorRef) error {
 Stops the actor after the current message is processed
 Does not delete the actor
  */
-func (selfPtr *DefaultActor) StopRightAway() {
+func (selfPtr *CoreActor) StopRightAway() {
 	selfPtr.startStopLock.Lock()
 	defer selfPtr.startStopLock.Unlock()
 
@@ -239,7 +243,7 @@ func (selfPtr *DefaultActor) StopRightAway() {
 /**
 Stops the actor after all the messages in the box are processed
  */
-func (selfPtr *DefaultActor) PendingStop() {
+func (selfPtr *CoreActor) PendingStop() {
 	selfPtr.startStopLock.Lock()
 	defer selfPtr.startStopLock.Unlock()
 
@@ -249,7 +253,7 @@ func (selfPtr *DefaultActor) PendingStop() {
 /**
 Restarts the actor right away
  */
-func (selfPtr *DefaultActor) Restart() {
+func (selfPtr *CoreActor) Restart() {
 	selfPtr.startStopLock.Lock()
 	defer selfPtr.startStopLock.Unlock()
 

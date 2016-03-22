@@ -1,14 +1,14 @@
 package actor
 import "reflect"
 
-var actorIndexer []*DefaultActor
+var actorIndexer []*CoreActor
 
 //todo DID NOT DECIDE YET WHETHER TO MAKE PEOPLE USE ACTORREF AS POINTER OR VALUE
 //todo RIGHT NOW CORRECT THING TO DO LOOKS LIKE MAKE THEM USE IT AS VALUE, CHANGE IT LATER?
 
 type ActorRef struct {
 	actorIndex int
-	defaultActor *DefaultActor
+	defaultActor *CoreActor
 }
 
 func (selfPtr *ActorRef) Tell(msg interface{}, tellerRef ActorRef) error {
@@ -24,7 +24,7 @@ func (selfPtr *ActorRef) SetPriority(typ reflect.Type, priority int) {
 //todo Maybe actorRefs should be created and saved into defaultactors in advance
 //todo so we can avoid iterating and creating an actorref
 func (actorRef *ActorRef) Children() []ActorRef {
-	var childrenArray []*DefaultActor = actorRef.defaultActor.ChildrenArray
+	var childrenArray []*CoreActor = actorRef.defaultActor.ChildrenArray
 	var actorRefSlice []ActorRef
 	for i := 0; i < len(childrenArray); i++ {
 		actorRefSlice = append(actorRefSlice, convertDefaultActorToActorRef(childrenArray[i]))

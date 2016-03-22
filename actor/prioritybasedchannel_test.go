@@ -9,13 +9,10 @@ import (
 var count int = 0
 var mutex sync.Mutex
 
-func cuser2(c PriorityBasedChannel) {
+func cuser2(c PriorityBasedChannel, quitChannel chan int) {
 
-	//		fmt.Println("gonna get now")
 	c.Get()
-//	fmt.Println(c.messageQueue.GetTotalItemCount())
-
-	//		fmt.Println(m)
+	quitChannel <- 1
 	mutex.Lock()
 	count = count + 1
 
@@ -28,17 +25,21 @@ type Msg struct {
 }
 
 func TestSome(t *testing.T) {
-	c := NewPriorityBasedChannel()
+	c := NewPriorityBasedChannel("TestChannel")
 
 	c.SetPriority(1, reflect.TypeOf(Msg{}))
+	quitChannel := make(chan int)
 
-	for i := 0; i < 10000; i++ {
-		go cuser2(c)
+	count := 10000
+	for i := 0; i < count; i++ {
+		go cuser2(c, quitChannel)
 	}
 
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < count; i++ {
 		c.Send(Msg{name:"yo"})
 	}
 
-	Run()
+	for i := 0; i < count; i++ {
+		<- quitChannel
+	}
 }
