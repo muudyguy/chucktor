@@ -29,6 +29,8 @@ func (selfPtr *MyActor) OnReceive(self actor.ActorRef, msg actor.ActorMessage) e
       fmt.Println("I have received a message of the expected type")
     default:
       fmt.Println("Message is not of the expected type")
+      
+  return nil
   }
 }
 
