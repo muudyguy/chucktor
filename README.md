@@ -9,6 +9,32 @@ Channels are great. However actors provide a hierarchical structure which someti
 
 ## How to use ##
 
+The expected usage is to create one actor system per application. An actor system can be created with the statement:
+
+```go
+executorCount := 4
+actorSystem := actor.NewActorSystem(executorCount)
+```
+
+Executor count represents the alive goroutine workers that are responsible to process messages sent to actors.
+An actor is created either via an actor system object or an actor reference.
+
+An actor is declared as a struct that implements actor.ActorInterface. ActorInterface is declared as follows:
+
+```go
+type ActorInterface interface {
+	OnReceive(self ActorRef, msg ActorMessage) error
+	OnStart(self ActorRef) error
+	OnStop(self ActorRef) error
+	OnRestart(self ActorRef) error
+	OnDeadletter(self ActorRef) error
+}
+```
+
+An implementor of this interface should use actor.DefaultActorInterface via composition to be able to use default implementations most of which do nothing. But yet it prevents one having to implement the unused methods.
+
+An example that creates an actor system and actor on this system, can be seen below:
+
 ```go
 import "actor"
 
