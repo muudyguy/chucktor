@@ -17,17 +17,30 @@ type MyActor struct {
   actor.DefaultActorInterface
 }
 
+type MessageStruct struct {
+  text string
+}
+
+//On receive callback implementation
 func (selfPtr *MyActor) OnReceive(self actor.ActorRef, msg actor.ActorMessage) error {
   message := msg.Msg
   switch message.(type) {
-    
+    case MessageStruct:
+      fmt.Println("I have received a message of the expected type")
+    default:
+      fmt.Println("Message is not of the expected type")
   }
 }
 
 func main() {
   executorCount := 4
   actorSystem := actor.NewActorSystem(executorCount)
-  actorSystem.CreateActor(
+  var actor1ref actor.ActorRef := actorSystem.CreateActor(&MyActor{}, "actor1")
+  
+  //Send a message to actor1 from a nil sender
+  actor1ref.Tell(MessageStruct{}, nil)
+  
+  actor.Run()
 }
 ```
 
