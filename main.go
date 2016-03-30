@@ -12,6 +12,7 @@ import (
 //	"os"
 	"strconv"
 //	"runtime"
+	"runtime"
 )
 
 type Msg struct {
@@ -183,7 +184,7 @@ func testChannelGet() {
 }
 
 func main() {
-//	fmt.Println(runtime.GOMAXPROCS(0))
+	fmt.Println(runtime.GOMAXPROCS(0))
 	testActorMessaging()
 
 	actor.Run()

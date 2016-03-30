@@ -22,6 +22,7 @@ type CoreActor struct {
 	Name           string
 	ChildrenArray  []*CoreActor
 	ChildrenMap    map[string]*CoreActor
+	Watchers	   []*CoreActor
 	Parent         *CoreActor
 	actorInterface ActorInterface
 	messageQueue   *queue.RoundRobinQueue
@@ -30,6 +31,7 @@ type CoreActor struct {
 
 	stop           *uint32 //todo Find atomic operations for 8 bit or boolean
 	pendingStop    *uint32
+	stoppingChannel chan int
 
 	justStarted    *uint32
 
@@ -39,9 +41,14 @@ type CoreActor struct {
 
 	startStopLock  *sync.Mutex
 	selfLock       *sync.Mutex
+
+	supervisionStrategy int
 }
 
-func NewDefaultActor(name string, parent *CoreActor) *CoreActor {
+/**
+Create a new core actor with correct initializations
+ */
+func NewCoreActor(name string, parent *CoreActor) *CoreActor {
 	da := CoreActor{}
 	da.Name = name
 	da.Parent = parent
@@ -61,6 +68,8 @@ func NewDefaultActor(name string, parent *CoreActor) *CoreActor {
 	da.stopped = new(uint32)
 	*da.stopped = 0
 
+	da.stoppingChannel = make(chan int, 10)
+
 	da.ActorSystem = parent.ActorSystem
 
 	da.messageQueue = queue.NewRoundRobinQueue()
@@ -78,7 +87,7 @@ func (selfPtr *CoreActor) SetMessagePriority(typ reflect.Type, priority int) {
 
 /**
 This Block sets, resets and checks states
-Uint32 type could be changed for something else later using atomic.Value
+uint32 type could be changed for something else later using atomic.Value
 I am not sure which one is more efficient. A benchmark could be good
  */
 
@@ -98,44 +107,64 @@ func (selfPtr *CoreActor) atomicallyCheckPtr(ptr *uint32) uint32 {
 	return atomic.LoadUint32(ptr)
 }
 
+
 /**
 Actor instance here will be a pointer as long as the user passes the pointer of the interface they implemented
 //todo How to make them do it all the time to avoid mistakes in their behalf
  */
-func recoverFunc(actor ActorInterface) {
+func (selfPtr *CoreActor) recoverFunc(actor ActorInterface) {
 	if r := recover(); r != nil {
-		//Recovered from an error
-		//todo Determine supervisor strategies and switch here
-		//todo New callbacks in actor interface ?
-		fmt.Println("panicing!!!")
+		//might fail if some other type was returned from recover()
+		err := r.(error)
+		selfPtr.handleError(err)
 	}
 }
 
-func (selfPtr *CoreActor) handleError(err error) {
+/**
+Stop all children of this core actor
+ */
+func (selfPtr *CoreActor) stopChildren() {
+	for _, child := range selfPtr.ChildrenArray {
+		child.StopRightAway()
+	}
+	//todo Delete, memory ?
+	//how about selfPtr.Children = []*CoreActor ??  No, just 1 ActorRef would cause a memory leak. Maybe it should ?
+}
 
+/**
+Handle any errors that occur in run()
+ */
+func (selfPtr *CoreActor) handleError(err error) {
+	switch selfPtr.supervisionStrategy {
+	case 0:
+		//todo Will this be enough to propagate
+		selfPtr.Parent.handleError(err)
+	case 1:
+		//todo RESTART
+	}
 }
 
 //This is the main runner of the actor
 //The real stuff happens here
 func (selfPtr *CoreActor) run() {
 	//Run recover in case an error occurs
-	defer recoverFunc(selfPtr.actorInterface)
+	defer selfPtr.recoverFunc(selfPtr.actorInterface)
 	defer selfPtr.selfLock.Unlock()
+	//Lock self, so multiple threads can run this actor simultaneously (aka executors)
+	//todo Do we really need to lock ?
+	selfPtr.selfLock.Lock()
 
 	if selfPtr.atomicallyCheckPtr(selfPtr.stopped) == 1 {
-		err := selfPtr.actorInterface.OnDeadletter(convertDefaultActorToActorRef(selfPtr))
+		err := selfPtr.actorInterface.OnDeadletter(convertCoreActorToActorRef(selfPtr))
 		if err != nil {
 			panic(err)
 		}
 		return
 	}
 
-	//Lock self, so multiple threads can run this actor simultaneously (aka executors)
-	selfPtr.selfLock.Lock()
-
 	//Actor just started run the callback
 	if selfPtr.atomicallyCheckPtr(selfPtr.justStarted) == 1 {
-		err := selfPtr.actorInterface.OnStart(convertDefaultActorToActorRef(selfPtr))
+		err := selfPtr.actorInterface.OnStart(convertCoreActorToActorRef(selfPtr))
 		if err != nil {
 			panic(err)
 		}
@@ -144,7 +173,10 @@ func (selfPtr *CoreActor) run() {
 
 	//todo A better way to stop?
 	if selfPtr.atomicallyCheckPtr(selfPtr.stop) == 1 {
-		err := selfPtr.actorInterface.OnStop(convertDefaultActorToActorRef(selfPtr))
+		fmt.Println("getting stopped")
+		//todo Notify watchers of death
+		selfPtr.notifyWatchers()
+		err := selfPtr.actorInterface.OnStop(convertCoreActorToActorRef(selfPtr))
 		if err != nil {
 			panic(err)
 		}
@@ -167,8 +199,7 @@ func (selfPtr *CoreActor) run() {
 		fmt.Println("Got message for actor : " + selfPtr.Name)
 
 		fmt.Println("now total size of actor " + selfPtr.Name + "'s channel is reduced to " + strconv.Itoa(selfPtr.messageQueue.GetTotalItemCount()))
-		err := selfPtr.actorInterface.OnReceive(convertDefaultActorToActorRef(selfPtr), actorMessage)
-		fmt.Println("Got over run")
+		err := selfPtr.actorInterface.OnReceive(convertCoreActorToActorRef(selfPtr), actorMessage)
 		if err != nil {
 			panic(err)
 		}
@@ -218,14 +249,16 @@ func (selfPtr *CoreActor) Tell(msg interface{}, tellerRef ActorRef) error {
 		//Enlist itself to be ran for this message
 		//todo Would this create overhead somehow?
 		//todo Fairness, starvation problems ?
-		fmt.Println("Started telling")
-		selfPtr.ActorSystem.actorChannel <- selfPtr
-		fmt.Println("Done telling")
+		//todo Too many hanging goroutines ?
+		//todo Maybe instead of goroutines give huge buffer? It could work
+		go func() {
+			selfPtr.ActorSystem.actorChannel <- selfPtr
+		}()
 		return nil
 	}
 
 
-	return fmt.Errorf("This actor is pending for stop or is stopped, this message will not be processed")
+	return ActorIsStopped{}
 }
 
 
@@ -238,6 +271,11 @@ func (selfPtr *CoreActor) StopRightAway() {
 	defer selfPtr.startStopLock.Unlock()
 
 	selfPtr.atomicallySetPtr(selfPtr.stop)
+
+	//Send itself to be ran for stop op
+	go func() {
+		selfPtr.ActorSystem.actorChannel <- selfPtr
+	}()
 }
 
 /**
@@ -258,4 +296,16 @@ func (selfPtr *CoreActor) Restart() {
 	defer selfPtr.startStopLock.Unlock()
 
 	//todo implement?
+}
+
+func (selfPtr *CoreActor) notifyWatchers() {
+	for _, watcher := range selfPtr.Watchers {
+		//todo This feels awkward here
+		//todo It should be telling himself with a pointer ?
+		watcher.Tell(Death{Dead:convertCoreActorToActorRef(selfPtr)}, convertCoreActorToActorRef(selfPtr))
+	}
+}
+
+func (selfPtr *CoreActor) Watch(requester *CoreActor) {
+	selfPtr.Watchers = append(selfPtr.Watchers, requester)
 }

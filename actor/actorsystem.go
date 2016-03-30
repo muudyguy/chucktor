@@ -138,13 +138,13 @@ func getParentRecursively(defaultActor *CoreActor, path string) (*CoreActor, str
 func createActorOnParent(actor ActorInterface, actorSystem *ActorSystem, path string,
 		parentStartActor *CoreActor) (ActorRef, error) {
 	//Create new actor
-	parentActor, singularName, err := getParentRecursively(actorSystem.rootActor, path)
+	parentActor, singularName, err := getParentRecursively(parentStartActor, path)
 	if err != nil {
 		return ActorRef{}, err
 	}
 
 
-	var newActor *CoreActor = NewDefaultActor(singularName, parentActor)
+	var newActor *CoreActor = NewCoreActor(singularName, parentActor)
 
 	newActor.actorInterface = actor
 
@@ -170,7 +170,7 @@ func createActorOnParent(actor ActorInterface, actorSystem *ActorSystem, path st
 
 	return ActorRef{
 		actorIndex: newActor.index, //todo Not needed anymore ?
-		defaultActor:newActor,
+		coreActor:newActor,
 	}, nil
 }
 
@@ -191,7 +191,7 @@ func (actorSystem *ActorSystem) GetActorRef(path string) (ActorRef, error) {
 	if err != nil {
 		return ActorRef{}, err
 	}
-	actorRefForFoundActor := convertDefaultActorToActorRef(foundActor)
+	actorRefForFoundActor := convertCoreActorToActorRef(foundActor)
 	return actorRefForFoundActor, nil
 
 }

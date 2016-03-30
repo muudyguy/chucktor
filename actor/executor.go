@@ -1,5 +1,5 @@
 package actor
-import "fmt"
+
 
 
 type ActorSystemExecutor struct {
@@ -8,9 +8,7 @@ type ActorSystemExecutor struct {
 
 //Execute a message from the grabbed actor from the queue channel
 func (selfPtr *ActorSystemExecutor) execute(actor *CoreActor) {
-	fmt.Println("EXECUTING")
 	actor.run()
-	fmt.Println("DONE EXECUTING")
 }
 
 //Starts eternal execution
