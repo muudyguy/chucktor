@@ -7,15 +7,16 @@ type ActorSystemExecutor struct {
 }
 
 //Execute a message from the grabbed actor from the queue channel
-func (selfPtr *ActorSystemExecutor) execute(actor *CoreActor) {
-	actor.run()
+func (selfPtr *ActorSystemExecutor) execute() {
+	coreActor := selfPtr.actorSystem.messageBox.Pop()
+	coreActor.run()
 }
 
 //Starts eternal execution
 func (selfPtr *ActorSystemExecutor) startExecution() {
 	for {
-		defaultActor := <- selfPtr.actorSystem.actorChannel
-		selfPtr.execute(defaultActor)
+		<- selfPtr.actorSystem.actorChannel
+		selfPtr.execute()
 	}
 }
 

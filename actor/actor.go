@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"sync/atomic"
 	"reflect"
-	"strconv"
+//	"strconv"
 	"sync"
 	"queue"
 )
 
 
 
-
+//todo FILE TOO BIG?
 /**
 Actual actors kept within the system
 Children are kept in a slice, also a map
@@ -20,6 +20,7 @@ in a map only
  */
 type CoreActor struct {
 	Name           string
+	FullPath	   string
 	ChildrenArray  []*CoreActor
 	ChildrenMap    map[string]*CoreActor
 	Watchers	   []*CoreActor
@@ -77,6 +78,8 @@ func NewCoreActor(name string, parent *CoreActor) *CoreActor {
 	da.startStopLock = new(sync.Mutex)
 	da.selfLock = new(sync.Mutex)
 
+	da.supervisionStrategy = 0 //Propagate
+
 	return &da
 }
 
@@ -107,6 +110,15 @@ func (selfPtr *CoreActor) atomicallyCheckPtr(ptr *uint32) uint32 {
 	return atomic.LoadUint32(ptr)
 }
 
+func (selfPtr *CoreActor) serveSelf() {
+//	go func() {
+//		selfPtr.ActorSystem.actorChannel <- selfPtr
+//	}()
+	fmt.Println("Served self")
+	selfPtr.ActorSystem.messageBox.Enlist(selfPtr)
+	selfPtr.ActorSystem.actorChannel <- 1
+}
+
 
 /**
 Actor instance here will be a pointer as long as the user passes the pointer of the interface they implemented
@@ -135,6 +147,13 @@ func (selfPtr *CoreActor) stopChildren() {
 Handle any errors that occur in run()
  */
 func (selfPtr *CoreActor) handleError(err error) {
+	//todo This does not look good to me
+	if selfPtr.Name == "root" {
+		//todo do something else for root
+		return
+	}
+
+	selfPtr.actorInterface.OnError(convertCoreActorToActorRef(selfPtr))
 	switch selfPtr.supervisionStrategy {
 	case 0:
 		//todo Will this be enough to propagate
@@ -193,12 +212,12 @@ func (selfPtr *CoreActor) run() {
 	}
 
 	item, check := selfPtr.messageQueue.GetOne()
-	//There is no way check to be false, but still...
+	//check might be false for stop operations etc...
 	if check {
 		actorMessage := item.(ActorMessage)
-		fmt.Println("Got message for actor : " + selfPtr.Name)
-
-		fmt.Println("now total size of actor " + selfPtr.Name + "'s channel is reduced to " + strconv.Itoa(selfPtr.messageQueue.GetTotalItemCount()))
+//		fmt.Println("Got message for actor : " + selfPtr.Name)
+//
+//		fmt.Println("now total size of actor " + selfPtr.Name + "'s channel is reduced to " + strconv.Itoa(selfPtr.messageQueue.GetTotalItemCount()))
 		err := selfPtr.actorInterface.OnReceive(convertCoreActorToActorRef(selfPtr), actorMessage)
 		if err != nil {
 			panic(err)
@@ -216,6 +235,8 @@ func (selfPtr *CoreActor) Start() {
 	selfPtr.atomicallyResetPtr(selfPtr.stop)
 	selfPtr.atomicallyResetPtr(selfPtr.stopped)
 	selfPtr.atomicallyResetPtr(selfPtr.pendingStop)
+
+	selfPtr.serveSelf()
 }
 
 /**
@@ -251,9 +272,13 @@ func (selfPtr *CoreActor) Tell(msg interface{}, tellerRef ActorRef) error {
 		//todo Fairness, starvation problems ?
 		//todo Too many hanging goroutines ?
 		//todo Maybe instead of goroutines give huge buffer? It could work
-		go func() {
-			selfPtr.ActorSystem.actorChannel <- selfPtr
-		}()
+		/**
+		Another queue for executors could be designed. Priorities would be equal for every actor created.
+		It could as well just be a prioritizing map, holding quantum states for every actor path
+		if a quantum is zero, reset it and go to the next actor. Every Tell, also sends a message nevertheless.
+		The problem of blocking could be solved with
+		 */
+		selfPtr.serveSelf()
 		return nil
 	}
 
@@ -271,11 +296,8 @@ func (selfPtr *CoreActor) StopRightAway() {
 	defer selfPtr.startStopLock.Unlock()
 
 	selfPtr.atomicallySetPtr(selfPtr.stop)
-
 	//Send itself to be ran for stop op
-	go func() {
-		selfPtr.ActorSystem.actorChannel <- selfPtr
-	}()
+	selfPtr.serveSelf()
 }
 
 /**

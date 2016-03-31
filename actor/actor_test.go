@@ -53,3 +53,45 @@ func TestWatch(t *testing.T) {
 	<- doneChannel
 	<- doneChannel
 }
+
+
+/**
+FAIL TEST
+ */
+
+type FailingActor struct {
+	DefaultActorInterface
+}
+
+func (selfPtr *FailingActor) OnReceive(self ActorRef, msg ActorMessage) error {
+	fmt.Println("IN FAILINGACTOR ON RECEIVE")
+	return fmt.Errorf("Error")
+}
+
+type ParentOfFailingActor struct {
+	DefaultActorInterface
+	failReceivedChannel chan int
+}
+
+func (selfPtr *ParentOfFailingActor) OnReceive(self ActorRef, msg ActorMessage) error {
+	return nil
+}
+
+func (selfPtr *ParentOfFailingActor) OnError(self ActorRef) {
+	selfPtr.failReceivedChannel <- 1
+}
+
+func TestFail(t *testing.T) {
+	as := NewActorSystem(4)
+	failReceivedChannel := make(chan int)
+	_, err := as.CreateActor(&ParentOfFailingActor{failReceivedChannel:failReceivedChannel}, "parentoffailingactor")
+	if err != nil {
+		panic(err)
+	}
+	failingActor, err := as.CreateActor(&FailingActor{}, "parentoffailingactor/failingactor")
+	if err != nil {
+		panic(err)
+	}
+	failingActor.Tell(5, ActorRef{})
+	<- failReceivedChannel
+}

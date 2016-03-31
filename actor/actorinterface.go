@@ -9,6 +9,7 @@ type ActorInterface interface {
 	OnStop(self ActorRef) error
 	OnRestart(self ActorRef) error
 	OnDeadletter(self ActorRef) error
+	OnError(self ActorRef)
 }
 
 
@@ -34,4 +35,8 @@ func (selfPtr *DefaultActorInterface) OnRestart(self ActorRef) error {
 
 func (selfPtr *DefaultActorInterface) OnDeadletter(self ActorRef) error {
 	return nil
+}
+
+func (selfPtr *DefaultActorInterface) OnError(self ActorRef) {
+
 }

@@ -9,10 +9,12 @@ import (
 type ActorSystem struct {
 	actorMap     map[string]ActorInterface
 	rootActor    *CoreActor
-	actorChannel chan *CoreActor
+	actorChannel chan int
 
 	executorNumber int
 	executors []*ActorSystemExecutor
+
+	messageBox MessageBoxInterface
 }
 
 func NewActorSystem(executorNumber int) *ActorSystem {
@@ -20,7 +22,8 @@ func NewActorSystem(executorNumber int) *ActorSystem {
 	as.rootActor = newRootActor(as)
 	as.actorMap = make(map[string]ActorInterface)
 	as.createAndStartExecutors(executorNumber)
-	as.actorChannel = make(chan *CoreActor)
+	as.actorChannel = make(chan int, 1000)
+	as.messageBox = NewFairGlobalMessageBox(10)
 	return as
 }
 
@@ -120,12 +123,17 @@ is created as a child under that actor
  */
 func getParentRecursively(defaultActor *CoreActor, path string) (*CoreActor, string, error) {
 	pathSliceUntilFutureParentName, nameOfFutureActor := getPathUntilParentAndNameOfFutureActor(path)
+//	fmt.Println("NAMES")
+//	fmt.Println(path)
+//	fmt.Println(pathSliceUntilFutureParentName)
+//	fmt.Println(nameOfFutureActor)
 
 	if len(pathSliceUntilFutureParentName) == 0 {
 		return defaultActor, nameOfFutureActor, nil
 	}
 
 	actor, err := getActorFromNodeRecursively(defaultActor, 0, pathSliceUntilFutureParentName)
+//	fmt.Println(actor.actorInterface)
 	if err != nil {
 		return nil, "", err
 	}
@@ -139,12 +147,13 @@ func createActorOnParent(actor ActorInterface, actorSystem *ActorSystem, path st
 		parentStartActor *CoreActor) (ActorRef, error) {
 	//Create new actor
 	parentActor, singularName, err := getParentRecursively(parentStartActor, path)
+
 	if err != nil {
 		return ActorRef{}, err
 	}
 
-
 	var newActor *CoreActor = NewCoreActor(singularName, parentActor)
+	newActor.FullPath = path //todo Move this into new core actor
 
 	newActor.actorInterface = actor
 
@@ -165,8 +174,6 @@ func createActorOnParent(actor ActorInterface, actorSystem *ActorSystem, path st
 	actorIndexer = append(actorIndexer, newActor)
 
 	newActor.index = len(actorIndexer) - 1
-
-	newActor.Start()
 
 	return ActorRef{
 		actorIndex: newActor.index, //todo Not needed anymore ?
