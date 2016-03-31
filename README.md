@@ -28,6 +28,7 @@ type ActorInterface interface {
 	OnStop(self ActorRef) error
 	OnRestart(self ActorRef) error
 	OnDeadletter(self ActorRef) error
+	OnError(self ActorRef)
 }
 ```
 
@@ -68,6 +69,7 @@ func main() {
   //Send a message to actor1 from a nil sender
   actor1ref.Tell(MessageStruct{}, nil)
   
+  //Has to be used to prevent main from exiting
   actor.Run()
 }
 ```
