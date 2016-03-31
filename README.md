@@ -3,11 +3,11 @@ Chucktor : Actor implementation with golang channels !
 
 Chucktor is a light weight actor model implementation for go language.
 
-## Why actors when channels ##
+# Why actors when channels #
 
 Channels are great. However actors provide a hierarchical structure which sometimes makes a lot of sense, depending on the project. Underneath this implementation there are a lot of channels anyway :).
 
-## How to use ##
+# How to use #
 
 The expected usage is to create one actor system per application. An actor system can be created with the statement:
 
@@ -79,7 +79,7 @@ func main() {
 3- Stop it when it is done with current messages
 3- Restart it
 
-# Telling an actor a message #
+### Telling an actor a message ###
 ```go
 actorRef.Tell(msg, tellerActorRef)
 ```
@@ -87,7 +87,7 @@ actorRef.Tell(msg, tellerActorRef)
 When a message is to be told to another actor, the reference of the teller needs to be passed into the Tell method.
 That is the only way the receiver can know the sender of the message.
 
-# Stopping an Actor #
+### Stopping an Actor ###
 
 ```go
 actorRef.Stop()
@@ -95,11 +95,11 @@ actorRef.Stop()
 
 Currently, when an actor is stopped, the stopped actor cannot know the identity of the stopper. This will be fixed in later releases.
 
-# Stopping an actor when done #
+### Stopping an actor when done ###
 
 To be implemented... Very soon :)
 
-# Restart an actor #
+### Restart an actor ###
 
 Restarting an actor simply just, invokes the onRestart method. Currently old messages are not deleted or processed as dead letter.
 
