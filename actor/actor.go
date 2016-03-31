@@ -1,12 +1,12 @@
 package actor
 import (
 
-	"fmt"
 	"sync/atomic"
 	"reflect"
 //	"strconv"
 	"sync"
 	"queue"
+//	"strconv"
 )
 
 
@@ -111,10 +111,6 @@ func (selfPtr *CoreActor) atomicallyCheckPtr(ptr *uint32) uint32 {
 }
 
 func (selfPtr *CoreActor) serveSelf() {
-//	go func() {
-//		selfPtr.ActorSystem.actorChannel <- selfPtr
-//	}()
-	fmt.Println("Served self")
 	selfPtr.ActorSystem.messageBox.Enlist(selfPtr)
 	selfPtr.ActorSystem.actorChannel <- 1
 }
@@ -137,7 +133,7 @@ Stop all children of this core actor
  */
 func (selfPtr *CoreActor) stopChildren() {
 	for _, child := range selfPtr.ChildrenArray {
-		child.StopRightAway()
+		child.StopNow()
 	}
 	//todo Delete, memory ?
 	//how about selfPtr.Children = []*CoreActor ??  No, just 1 ActorRef would cause a memory leak. Maybe it should ?
@@ -167,11 +163,14 @@ func (selfPtr *CoreActor) handleError(err error) {
 //The real stuff happens here
 func (selfPtr *CoreActor) run() {
 	//Run recover in case an error occurs
+	//Right now executors receive actor state from the queue and run this method.
+	//Only one actor state exists for an actor, so thre is no way for a simultaneous running of this method
 	defer selfPtr.recoverFunc(selfPtr.actorInterface)
 	defer selfPtr.selfLock.Unlock()
 	//Lock self, so multiple threads can run this actor simultaneously (aka executors)
 	//todo Do we really need to lock ?
 	selfPtr.selfLock.Lock()
+
 
 	if selfPtr.atomicallyCheckPtr(selfPtr.stopped) == 1 {
 		err := selfPtr.actorInterface.OnDeadletter(convertCoreActorToActorRef(selfPtr))
@@ -190,38 +189,44 @@ func (selfPtr *CoreActor) run() {
 		selfPtr.atomicallyResetPtr(selfPtr.justStarted)
 	}
 
-	//todo A better way to stop?
-	if selfPtr.atomicallyCheckPtr(selfPtr.stop) == 1 {
-		fmt.Println("getting stopped")
-		//todo Notify watchers of death
-		selfPtr.notifyWatchers()
-		err := selfPtr.actorInterface.OnStop(convertCoreActorToActorRef(selfPtr))
-		if err != nil {
-			panic(err)
-		}
-		selfPtr.atomicallySetPtr(selfPtr.stopped)
-		return
-	}
-
-	//A pending stop was fired
-	//There is only 1 item left in the message box, and a pending stop is active
-	//So the message will be processed and stopped will be set
-	if selfPtr.atomicallyCheckPtr(selfPtr.pendingStop) == 1 && selfPtr.getMessageQueueCount() == 1 {
-		//set stopped to 1 if it is 0
-		selfPtr.atomicallySetPtr(selfPtr.stopped)
-	}
-
 	item, check := selfPtr.messageQueue.GetOne()
-	//check might be false for stop operations etc...
+
+
+//	fmt.Println("Got message for actor : " + selfPtr.Name)
+//	fmt.Println(item)
+//	fmt.Println("now total size of actor " + selfPtr.Name + "'s channel is reduced to " + strconv.Itoa(selfPtr.messageQueue.GetTotalItemCount()))
+
+
+
+	var err error
 	if check {
 		actorMessage := item.(ActorMessage)
-//		fmt.Println("Got message for actor : " + selfPtr.Name)
-//
-//		fmt.Println("now total size of actor " + selfPtr.Name + "'s channel is reduced to " + strconv.Itoa(selfPtr.messageQueue.GetTotalItemCount()))
-		err := selfPtr.actorInterface.OnReceive(convertCoreActorToActorRef(selfPtr), actorMessage)
+		switch actorMessage.Msg.(type) {
+			case StopNow:
+				err = selfPtr.actorInterface.OnStop(convertCoreActorToActorRef(selfPtr))
+				selfPtr.atomicallySetPtr(selfPtr.stopped)
+				selfPtr.notifyWatchers() //Send necessary Death messages
+//				fmt.Println("Received STOPNOW IN ACTOR :" + selfPtr.FullPath)
+			case StopWhenDone:
+				selfPtr.atomicallySetPtr(selfPtr.pendingStop)
+				//todo Implement stop when done
+				//todo The trick in my mind is to start a counter to process already existing messages and then set stopped flag
+//				fmt.Println("Received STOPWHENDONE IN ACTOR :" + selfPtr.FullPath)
+			case Restart:
+				selfPtr.actorInterface.OnRestart(convertCoreActorToActorRef(selfPtr))
+				//todo Notify message box to clear ? Or should the existing message processed?
+				//todo Decide !
+//				fmt.Println("Received RESTART IN ACTOR :" + selfPtr.FullPath)
+			default:
+				err = selfPtr.actorInterface.OnReceive(convertCoreActorToActorRef(selfPtr), actorMessage)
+//				fmt.Println("Received DEFAULT IN ACTOR :" + selfPtr.FullPath)
+		}
+
 		if err != nil {
 			panic(err)
 		}
+	} else {
+		//todo do something in case
 	}
 
 }
@@ -232,30 +237,21 @@ Starts the actor
  */
 func (selfPtr *CoreActor) Start() {
 	//If stopped is 1 make it 0
-	selfPtr.atomicallyResetPtr(selfPtr.stop)
 	selfPtr.atomicallyResetPtr(selfPtr.stopped)
 	selfPtr.atomicallyResetPtr(selfPtr.pendingStop)
 
 	selfPtr.serveSelf()
 }
 
-/**
-Messages told to actors are always of this type
-The user creates a custom message struct or whatever and sets it to Msg
 
-Users are responsible to retrieve actual Msg from ActorMessage
- */
-type ActorMessage struct {
-	Msg    interface{}
-	Teller ActorRef
-}
 
 /**
 In order to tell an actor a message, this should be used
  */
 func (selfPtr *CoreActor) Tell(msg interface{}, tellerRef ActorRef) error {
 
-	if selfPtr.atomicallyCheckPtr(selfPtr.pendingStop) == 0 && selfPtr.atomicallyCheckPtr(selfPtr.stop) == 0 {
+	//todo When the actor is stopped, do not tell or process as dead letters?
+	if selfPtr.atomicallyCheckPtr(selfPtr.pendingStop) == 0 && selfPtr.atomicallyCheckPtr(selfPtr.stopped) == 0 {
 		//todo Do we need actor message?
 		var actorMessage ActorMessage = ActorMessage{
 			Msg: msg,
@@ -291,11 +287,12 @@ func (selfPtr *CoreActor) Tell(msg interface{}, tellerRef ActorRef) error {
 Stops the actor after the current message is processed
 Does not delete the actor
  */
-func (selfPtr *CoreActor) StopRightAway() {
+func (selfPtr *CoreActor) StopNow() {
 	selfPtr.startStopLock.Lock()
 	defer selfPtr.startStopLock.Unlock()
 
-	selfPtr.atomicallySetPtr(selfPtr.stop)
+	//todo What to do with the teller? We should enter a stopper
+	selfPtr.messageQueue.EnlistAbsolutePriority(ActorMessage{Msg:StopNow{}})
 	//Send itself to be ran for stop op
 	selfPtr.serveSelf()
 }
@@ -303,11 +300,13 @@ func (selfPtr *CoreActor) StopRightAway() {
 /**
 Stops the actor after all the messages in the box are processed
  */
-func (selfPtr *CoreActor) PendingStop() {
+func (selfPtr *CoreActor) StopWhenDone() {
 	selfPtr.startStopLock.Lock()
 	defer selfPtr.startStopLock.Unlock()
 
-	selfPtr.atomicallySetPtr(selfPtr.pendingStop)
+	//todo What to do with the teller? We should enter a stopper
+	selfPtr.messageQueue.EnlistAbsolutePriority(ActorMessage{Msg:StopWhenDone{}})
+	selfPtr.serveSelf()
 }
 
 /**
@@ -317,6 +316,9 @@ func (selfPtr *CoreActor) Restart() {
 	selfPtr.startStopLock.Lock()
 	defer selfPtr.startStopLock.Unlock()
 
+	selfPtr.messageQueue.EnlistAbsolutePriority(ActorMessage{Msg:Restart{}})
+	//Send itself to be ran for stop op
+	selfPtr.serveSelf()
 	//todo implement?
 }
 

@@ -72,7 +72,6 @@ func (selfPtr *FairGlobalMessageBox) Pop() *CoreActor {
 	selfPtr.messageBoxLock.Lock()
 
 	actorState := selfPtr.actorStateQueue.GetFront()
-	fmt.Printf("%#v\n", selfPtr.actorStateQueue)
 	actorState.currentQuantum += 1
 	actorState.messageCount -= 1
 
@@ -98,14 +97,12 @@ func (selfPtr *FairGlobalMessageBox) Enlist(coreActor *CoreActor) {
 
 	value, ok := selfPtr.actorStatesMap[coreActor.FullPath]
 	if !ok {
-		fmt.Println("eNLISTED OK")
 		as := NewActorState(coreActor)
 		fmt.Println(as)
 		as.messageCount = 1
 		selfPtr.actorStatesMap[coreActor.FullPath] = as
 		selfPtr.actorStateQueue.Push(as)
 	} else {
-		fmt.Println("eNLISTED nope")
 		value.messageCount += 1
 	}
 }

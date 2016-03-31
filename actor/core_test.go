@@ -92,10 +92,17 @@ THIS BLOCK TESTS THAT STOPPING ACTOR WORKS !
 type StopTestActor struct {
 	DefaultActorInterface
 	onStopChannel chan int
+	messageCount int
+	maximumMessageCount int
+	t *testing.T
 }
 
 func (selfPtr *StopTestActor) OnReceive(self ActorRef, msg ActorMessage) error {
 	fmt.Println("On receive of stop test actor")
+	selfPtr.messageCount += 1
+	if selfPtr.messageCount == selfPtr.maximumMessageCount {
+		selfPtr.t.Error("All messages were processed via on receive")
+	}
 	return nil
 }
 
@@ -116,14 +123,15 @@ func sendMessagesToStopActor(stopActorRef ActorRef, count int, t *testing.T, don
 			return
 		}
 	}
-	t.Error("All messages were told without errors")
 	done <- 1
 }
 
 func TestStopping(t *testing.T) {
 	onStopChannel := make(chan int)
 	actorSystem := NewActorSystem(4)
-	stopTestActor1 := StopTestActor{onStopChannel:onStopChannel}
+
+	count := 1000
+	stopTestActor1 := StopTestActor{onStopChannel:onStopChannel, maximumMessageCount:count, t:t}
 
 
 	testActor1ref, err := actorSystem.CreateActor(&stopTestActor1, "testactor1")
@@ -135,15 +143,17 @@ func TestStopping(t *testing.T) {
 
 	done := make(chan int)
 
-	count := 1000
+
 	go sendMessagesToStopActor(testActor1ref, count, t, done)
 	//Wait 1 second for purposes
-	time.Sleep(1000000)
+	time.Sleep(100000)
 	testActor1ref.Stop()
 	<- done
 	select {
 	case <- onStopChannel:
 		//no problem
+	case <- time.After(time.Second * 3):
+		t.Error("On stop was not entered for 3 seconds")
 	default:
 		t.Error("On stop was not entered")
 	}
